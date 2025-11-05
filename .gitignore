@@ -1,5 +1,7 @@
-bin
-lib
+# Virtual Environment Binaries (root level only - don't ignore src/lib/)
+/bin
+/lib
+/lib64
 
 CACHEDIR.TAG
 pyvenv.cfg
