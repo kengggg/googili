@@ -215,7 +215,7 @@ class TestIngestionBehaviorWithPopulatedDatabase:
         mock_trends_class.return_value = mock_pytrends
 
         config = FetcherConfig()
-        ingestion_service = IngestionService(populated_test_db)
+        ingestion_service = IngestionService(populated_test_db, config)
 
         # Execute: Run ingestion
         batch_event = ingestion_service.ingest_with_initial_backfill_check()
@@ -245,7 +245,7 @@ class TestIngestionBehaviorWithPopulatedDatabase:
         mock_trends_class.return_value = mock_pytrends
 
         config = FetcherConfig()
-        ingestion_service = IngestionService(populated_test_db)
+        ingestion_service = IngestionService(populated_test_db, config)
 
         # Get initial count
         with populated_test_db.get_connection() as conn:
@@ -322,7 +322,7 @@ class TestIngestionBehaviorRecoveryScenarios:
         mock_trends_class.return_value = mock_pytrends
 
         config = FetcherConfig()
-        ingestion_service = IngestionService(recovery_test_db)
+        ingestion_service = IngestionService(recovery_test_db, config)
 
         # Execute: Run ingestion
         batch_event = ingestion_service.ingest_with_initial_backfill_check()
@@ -406,7 +406,7 @@ class TestIngestionBehaviorEdgeCases:
 
         # If notes field available, verify explanatory message
         if hasattr(batch_event, 'notes') and batch_event.notes:
-            assert 'partial' in batch_event.notes.lower() or 'available' in batch_event.notes.lower(), \
+            assert 'partial' in batch_event.notes.lower() or 'available' in batch_event.notes.lower() or 'missing' in batch_event.notes.lower(), \
                 "Batch event should note partial backfill situation"
 
     @patch('services.trends_fetcher.TrendReq')

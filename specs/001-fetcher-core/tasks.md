@@ -98,12 +98,12 @@ Per plan.md, single backend service structure:
 
 ### Implementation for User Story 2
 
-- [ ] T031 [US2] Implement backfill window calculator in fetcher/src/services/backfill.py (computes 90-day date range, handles partial availability per spec edge case)
-- [ ] T032 [US2] Implement database state detector in fetcher/src/lib/db_state.py (checks if raw_trenddata empty, determines first-run vs. recovery)
-- [ ] T033 [US2] Add first-run backfill logic to Ingestion service (detects empty DB on startup, triggers 90-day backfill, marks batch event "initial backfill")
-- [ ] T034 [US2] Add CLI backfill command in fetcher/src/cli/main.py (--backfill --days=90, supports manual backfill invocation)
-- [ ] T035 [US2] Implement batch chunking for backfill in Backfill service (avoid single massive request, chunk into weekly requests per pytrends best practices)
-- [ ] T036 [US2] Add backfill progress logging (log each chunk completion, total rows written, estimated time remaining)
+- [X] T031 [US2] Implement backfill window calculator in fetcher/src/services/backfill.py (computes 90-day date range, handles partial availability per spec edge case)
+- [X] T032 [US2] Implement database state detector in fetcher/src/lib/db_state.py (checks if raw_trenddata empty, determines first-run vs. recovery)
+- [X] T033 [US2] Add first-run backfill logic to Ingestion service (detects empty DB on startup, triggers 90-day backfill, marks batch event "initial backfill")
+- [X] T034 [US2] Add CLI backfill command in fetcher/main.py (--backfill --days=90, supports manual backfill invocation)
+- [X] T035 [US2] Implement batch chunking for backfill in BackfillService (avoid single massive request, chunk into weekly requests per pytrends best practices)
+- [X] T036 [US2] Add backfill progress logging (log each chunk completion, total rows written, estimated time remaining)
 
 **Checkpoint**: 90-day backfill works - empty database initializes with historical data automatically
 

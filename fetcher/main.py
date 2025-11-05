@@ -97,9 +97,9 @@ Examples:
         help='Run scheduler daemon (07:30 ICT daily with ±2 min jitter)'
     )
     mode_group.add_argument(
-        '--backfill-initial',
+        '--backfill',
         action='store_true',
-        help='Run initial backfill (last 90 days, for first-time setup)'
+        help='Run backfill ingestion (use --days to specify range)'
     )
 
     # Optional arguments
@@ -107,6 +107,12 @@ Examples:
         '--date',
         type=str,
         help='Target date for manual ingestion (format: YYYY-MM-DD)'
+    )
+    parser.add_argument(
+        '--days',
+        type=int,
+        default=90,
+        help='Number of days for backfill (default: 90, for first-time setup; 14 for recovery)'
     )
     parser.add_argument(
         '--db',
@@ -159,6 +165,11 @@ def validate_args(args):
         except ValueError:
             logger.error(f"Invalid date format: {args.date}. Expected YYYY-MM-DD")
             sys.exit(1)
+
+    # Validate --days argument
+    if args.backfill and args.days < 1:
+        logger.error(f"--days must be >= 1, got {args.days}")
+        sys.exit(1)
 
 
 def run_daily(db_path: str, schema_path: str):
@@ -296,55 +307,62 @@ def run_daemon(db_path: str, schema_path: str, schedule_time: str):
             logger.debug("Database connection closed")
 
 
-def run_backfill_initial(db_path: str, schema_path: str):
+def run_backfill(db_path: str, schema_path: str, days: int = 90):
     """
-    Run initial backfill (last 90 days).
+    Run backfill ingestion for specified number of days.
 
     Args:
         db_path: Database file path
         schema_path: Schema file path
+        days: Number of days to backfill (default: 90 for initial, 14 for recovery)
     """
-    logger.info("=== INITIAL BACKFILL MODE (last 90 days) ===")
+    logger.info(f"=== BACKFILL MODE (last {days} days) ===")
 
     db = None
     try:
         # Initialize database
         db = init_database(schema_path, db_path)
-        db_ops = DBOperations(db)
-
-        # Check if database is empty
-        if not db_ops.is_database_empty():
-            logger.warning(
-                "Database already contains data. Initial backfill should only be run once. "
-                "Use --manual for targeted backfills."
-            )
-            response = input("Continue anyway? (y/N): ")
-            if response.lower() != 'y':
-                logger.info("Backfill cancelled")
-                return 0
 
         # Load configuration
         config = FetcherConfig()
 
+        # Check database state
+        from lib.db_state import is_database_empty
+        is_empty = is_database_empty(db)
+
         # Run backfill
         ingestion_service = IngestionService(db, config)
-        batch_event = ingestion_service.ingest_initial_backfill()
+
+        if is_empty:
+            # Initial backfill: Use automatic detection method
+            logger.info(f"Empty database detected - triggering initial backfill ({days} days)")
+            batch_event = ingestion_service.ingest_with_initial_backfill_check(backfill_days=days)
+        else:
+            # Recovery backfill: Call date range method directly
+            logger.info(f"Running recovery backfill ({days} days)")
+            from services.backfill import calculate_backfill_window
+            start_date, end_date = calculate_backfill_window(days=days)
+            batch_event = ingestion_service.ingest_date_range(
+                start_date=start_date,
+                end_date=end_date,
+                batch_type='recovery_backfill'
+            )
 
         # Log results
         logger.info(
-            f"Initial backfill complete: batch_id={batch_event.batch_id}, "
+            f"Backfill complete: batch_id={batch_event.batch_id}, "
             f"status={batch_event.status}, rows_written={batch_event.rows_written}, "
             f"duration={batch_event.duration_seconds():.1f}s"
         )
 
         if batch_event.status == 'success':
-            logger.info("✅ Initial backfill successful")
+            logger.info("✅ Backfill successful")
             return 0
         elif batch_event.status == 'degraded':
-            logger.warning(f"⚠️  Initial backfill degraded: {batch_event.notes}")
+            logger.warning(f"⚠️  Backfill degraded: {batch_event.notes}")
             return 0
         else:
-            logger.error(f"❌ Initial backfill failed: {batch_event.error_message}")
+            logger.error(f"❌ Backfill failed: {batch_event.error_message}")
             return 1
     finally:
         if db:
@@ -374,8 +392,8 @@ def main():
             sys.exit(run_manual(args.db, args.schema, args.date))
         elif args.daemon:
             run_daemon(args.db, args.schema, args.schedule_time)  # Never returns
-        elif args.backfill_initial:
-            sys.exit(run_backfill_initial(args.db, args.schema))
+        elif args.backfill:
+            sys.exit(run_backfill(args.db, args.schema, args.days))
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         sys.exit(0)

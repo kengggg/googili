@@ -72,20 +72,20 @@ class TestDatabaseEmptyDetection:
             conn.executescript(schema)
 
         # Insert a few test records
-        test_record = RSVRecord(
-            keyword='ไข้',
-            date=date(2025, 11, 1),
-            rsv_raw=75,
-            granularity='daily',
-            batch_id='test-batch-001'
-        )
-
         with db.get_connection() as conn:
+            # First add a batch event (foreign key requirement)
             conn.execute("""
-                INSERT INTO raw_trenddata (keyword, date, rsv_raw, granularity, batch_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (test_record.keyword, test_record.date.isoformat(), test_record.rsv_raw,
-                  test_record.granularity, test_record.batch_id))
+                INSERT INTO events_raw_rsv_ingested
+                (batch_id, batch_type, requested_keywords, requested_window, started_at_ict, status)
+                VALUES ('test-batch-001', 'manual', '["ไข้"]', '2025-11-01', '2025-11-01T08:00:00+07:00', 'success')
+            """)
+
+            # Then add raw data
+            conn.execute("""
+                INSERT INTO raw_trenddata
+                (keyword, date, rsv_raw, granularity, batch_id, source_window_start, fetched_at_ict, quality)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, ('ไข้', '2025-11-01', 75, 'daily', 'test-batch-001', '2025-11-01', '2025-11-01T08:00:00+07:00', 'true'))
 
         yield db
 
@@ -146,6 +146,27 @@ class TestDatabaseStateMetadata:
     """Test that database state detector provides useful metadata."""
 
     @pytest.fixture
+    def empty_test_db(self):
+        """Create empty test database with schema."""
+        import tempfile
+        from lib.db import DatabaseConnection
+
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            db_path = tmp.name
+
+        db = DatabaseConnection(db_path)
+
+        with open('schema.sql', 'r') as f:
+            schema = f.read()
+        with db.get_connection() as conn:
+            conn.executescript(schema)
+
+        yield db
+
+        db.close()
+        Path(db_path).unlink()
+
+    @pytest.fixture
     def test_db_with_records(self):
         """Create test database with known record count."""
         import tempfile
@@ -163,11 +184,20 @@ class TestDatabaseStateMetadata:
 
         # Insert 5 test records
         with db.get_connection() as conn:
+            # First add a batch event (foreign key requirement)
+            conn.execute("""
+                INSERT INTO events_raw_rsv_ingested
+                (batch_id, batch_type, requested_keywords, requested_window, started_at_ict, status)
+                VALUES ('batch-001', 'manual', '[]', '2025-11-01', '2025-11-01T08:00:00+07:00', 'success')
+            """)
+
             for i in range(5):
                 conn.execute("""
-                    INSERT INTO raw_trenddata (keyword, date, rsv_raw, granularity, batch_id)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (f'keyword{i}', f'2025-11-0{i+1}', 75, 'daily', 'batch-001'))
+                    INSERT INTO raw_trenddata
+                    (keyword, date, rsv_raw, granularity, batch_id, source_window_start, fetched_at_ict, quality)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (f'keyword{i}', f'2025-11-0{i+1}', 75, 'daily', 'batch-001',
+                      f'2025-11-0{i+1}', '2025-11-01T08:00:00+07:00', 'true'))
 
         yield db
 
@@ -269,9 +299,17 @@ class TestFirstRunDetection:
 
         # Setup: Add data
         with test_db.get_connection() as conn:
+            # First add a batch event (foreign key requirement)
             conn.execute("""
-                INSERT INTO raw_trenddata (keyword, date, rsv_raw, granularity, batch_id)
-                VALUES ('ไข้', '2025-11-01', 75, 'daily', 'batch-001')
+                INSERT INTO events_raw_rsv_ingested
+                (batch_id, batch_type, requested_keywords, requested_window, started_at_ict, status)
+                VALUES ('batch-001', 'manual', '["ไข้"]', '2025-11-01', '2025-11-01T08:00:00+07:00', 'success')
+            """)
+
+            conn.execute("""
+                INSERT INTO raw_trenddata
+                (keyword, date, rsv_raw, granularity, batch_id, source_window_start, fetched_at_ict, quality)
+                VALUES ('ไข้', '2025-11-01', 75, 'daily', 'batch-001', '2025-11-01', '2025-11-01T08:00:00+07:00', 'true')
             """)
 
         # Execute

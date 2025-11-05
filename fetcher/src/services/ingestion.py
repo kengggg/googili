@@ -417,3 +417,83 @@ class IngestionService:
         )
 
         return batch_event
+
+    def ingest_with_initial_backfill_check(
+        self,
+        backfill_days: int = 90
+    ) -> Optional[BatchEvent]:
+        """
+        Check if database is empty and trigger initial backfill if needed.
+
+        This method implements the automatic 90-day backfill on first deployment
+        (User Story 2). It detects empty database state and triggers a complete
+        historical backfill, marking the batch event as 'initial_backfill' for
+        provenance.
+
+        If database already has data, this method skips the backfill and returns None,
+        allowing normal daily ingestion to proceed.
+
+        Args:
+            backfill_days: Number of days to backfill (default: 90)
+
+        Returns:
+            BatchEvent if backfill was triggered, None if database already populated
+
+        Raises:
+            PyTrendsException: If backfill fetch fails
+            DatabaseException: If persistence fails
+
+        Examples:
+            >>> # First deployment - empty database
+            >>> service = IngestionService(db, config)
+            >>> batch_event = service.ingest_with_initial_backfill_check()
+            >>> # Triggers 90-day backfill, returns batch event with batch_type='initial_backfill'
+
+            >>> # Subsequent runs - database has data
+            >>> batch_event = service.ingest_with_initial_backfill_check()
+            >>> # Returns None, allowing daily ingestion to proceed
+        """
+        # Check if database is empty
+        is_empty = self._is_database_empty()
+
+        if is_empty:
+            logger.info(
+                "Empty database detected - triggering initial backfill "
+                f"({backfill_days} days)"
+            )
+
+            # Import here to avoid circular dependency
+            from services.backfill import calculate_backfill_window
+
+            # Calculate backfill window
+            start_date, end_date = calculate_backfill_window(days=backfill_days)
+
+            # Trigger backfill using existing ingest_date_range method
+            batch_event = self.ingest_date_range(
+                start_date=start_date,
+                end_date=end_date,
+                batch_type='initial_backfill'
+            )
+
+            logger.info(
+                f"Initial backfill complete: {batch_event.rows_written} records written "
+                f"(batch_id={batch_event.batch_id})"
+            )
+
+            return batch_event
+
+        else:
+            logger.debug("Database not empty - skipping initial backfill")
+            return None
+
+    def _is_database_empty(self) -> bool:
+        """
+        Check if raw_trenddata table is empty.
+
+        Returns:
+            True if raw_trenddata has zero rows, False otherwise
+        """
+        with self.db.get_connection() as conn:
+            cursor = conn.execute("SELECT COUNT(*) FROM raw_trenddata")
+            count = cursor.fetchone()[0]
+            return count == 0
