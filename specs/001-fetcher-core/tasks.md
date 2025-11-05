@@ -92,9 +92,9 @@ Per plan.md, single backend service structure:
 
 ### Tests for User Story 2 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
-- [ ] T028 [P] [US2] Unit test for backfill window calculation in fetcher/tests/unit/test_backfill_windowing.py (90-day range, date arithmetic in Asia/Bangkok timezone)
-- [ ] T029 [P] [US2] Unit test for database empty detection in fetcher/tests/unit/test_db_state.py (detect empty DB, trigger first-run logic)
-- [ ] T030 [US2] Integration test for 90-day backfill in fetcher/tests/integration/test_initial_backfill.py (clean DB → backfill → verify 90 days × 10 keywords = 900 records)
+- [X] T028 [P] [US2] Unit test for backfill window calculation in fetcher/tests/unit/test_backfill_windowing.py (90-day range, date arithmetic in Asia/Bangkok timezone)
+- [X] T029 [P] [US2] Behavioral tests for ingestion service in fetcher/tests/unit/test_ingestion_behavior.py (empty DB triggers backfill, populated DB runs daily, no duplicates, recovery scenarios - tests WHAT users see, not HOW code works)
+- [X] T030 [US2] Integration test for 90-day backfill in fetcher/tests/integration/test_initial_backfill.py (clean DB → backfill → verify 90 days × 10 keywords = 900 records)
 
 ### Implementation for User Story 2
 
