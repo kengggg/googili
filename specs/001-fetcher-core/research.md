@@ -1,495 +1,606 @@
-# Research: Fetcher Core Technology Decisions
+# Technology Research: Fetcher Core
 
 **Feature**: Fetcher Core - Google Trends RSV Data Ingestion
 **Date**: 2025-11-04
-**Status**: Complete
-
-## Purpose
-
-This document captures all technology research, alternatives analysis, and final decisions for the Fetcher Core implementation. All decisions align with the Googili constitution v1.1.0 principles.
+**Purpose**: Document technology decisions and alternatives considered for MVP implementation
 
 ---
 
-## 1. Google Trends Data Access
+## Decision 1: Google Trends Access Method
 
-### Decision: pytrends (Unofficial Python Client)
+### Problem Statement
+Need reliable access to Google Trends Relative Search Volume (RSV) data for Thai keywords scoped to Chiang Mai Province (TH-50), supporting both daily and weekly granularity requests.
 
-**Chosen**: `pytrends` library (https://github.com/GeneralMills/pytrends)
+### Options Evaluated
 
-**Rationale**:
-- Most mature and actively maintained Python client for Google Trends
-- Supports both daily and weekly granularity requests
-- Built-in rate limiting and retry logic
-- Active community (10k+ stars, regular updates)
-- No authentication required for public Trends data
-- Handles international characters (Thai keywords) correctly
+#### Option A: pytrends (Unofficial Python Client) ✅ SELECTED
+**Description**: Community-maintained Python library wrapping Google Trends web interface
 
-**Alternatives Considered**:
+**Pros**:
+- Most mature Python library for Google Trends (5000+ GitHub stars, active maintenance)
+- Supports all required features: daily/weekly granularity, geographic scoping, timeframe specification
+- Handles rate limiting, cookie management, and retry logic internally
+- Extensive community documentation and troubleshooting resources
+- MIT licensed, permissive
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| Official Google Trends API | Sanctioned, stable | **Does not exist** for RSV data | Rejected |
-| Direct web scraping | No library dependency | Fragile, TOS violations, hard to maintain | Rejected |
-| SerpAPI (paid service) | Reliable, official | Monthly cost, overkill for MVP | Deferred |
-| trendet library | Alternative Python client | Less mature, fewer features | Rejected |
+**Cons**:
+- Unofficial API; breaks if Google changes web interface structure
+- Rate limiting not officially documented (community-learned thresholds)
+- No SLA or support from Google
 
-**Implementation Details**:
-- Wrap pytrends in `TrendsFetcher` service with exponential backoff
-- Rate limiting: 3-5 second jitter between keyword requests to avoid blocking
-- Error handling: Log all pytrends exceptions with context for operator troubleshooting
-- Geographic scope: Use `geo='TH-50'` for Chiang Mai Province
-
-**Testing Strategy**:
-- Unit tests: Mock pytrends responses for predictable testing
-- Integration tests: Optional live API tests (skipped in CI; run manually)
-- Contract tests: Verify pytrends output format matches expected schema
-
-**References**:
-- pytrends Documentation: https://pypi.org/project/pytrends/
-- Google Trends Terms: https://trends.google.com/trends/terms
-
----
-
-## 2. Time-Series Stitching Algorithm
-
-### Decision: Overlap-Based Scaling with Trimmed Mean
-
-**Chosen**: Compute scaling factor from overlap region using trimmed mean (drop highest/lowest 20%)
-
-**Rationale**:
-- Simple, explainable to non-technical public health analysts (constitution Principle VI: Clarity Over Cleverness)
-- Robust to outliers (single-day spikes) without requiring complex statistical models
-- Preserves zero values (no manufactured signal, per constitution ethical principles)
-- Literature-supported: Referenced in Google Flu Trends post-mortem and academic papers on web search surveillance
-
-**Mathematical Approach**:
-```
-For overlapping days d1, d2, ..., dn:
-  old_values = [existing stitched RSV for d1...dn]
-  new_values = [new raw RSV for d1...dn]
-
-  ratios = [old_values[i] / new_values[i] for i in range(n) if new_values[i] > 0]
-  trimmed_ratios = drop highest & lowest 20% of ratios
-  scaling_factor = mean(trimmed_ratios)
-
-  stitched_new = new_raw * scaling_factor
+**Implementation Notes**:
+```python
+from pytrends.request import TrendReq
+pytrends = TrendReq(hl='th-TH', tz=420)  # Thai locale, ICT timezone
+pytrends.build_payload(['ไข้'], cat=0, timeframe='2025-01-01 2025-01-30', geo='TH-50', gprop='')
+df = pytrends.interest_over_time()
 ```
 
-**Alternatives Considered**:
+#### Option B: Direct Web Scraping
+**Description**: Parse Google Trends HTML responses directly using BeautifulSoup or Scrapy
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| Simple mean | Easy to understand | Vulnerable to outliers | Rejected |
-| Median | Robust to outliers | Too aggressive for small overlaps (<5 days) | Rejected |
-| Weighted least squares | Optimal for large overlaps | Not explainable; overkill for MVP | Deferred |
-| No stitching (use raw) | Simple | Creates normalization artifacts, unusable for trends | Rejected |
+**Pros**:
+- Full control over request logic
+- No third-party dependency
 
-**Implementation Details**:
-- Minimum overlap: 1 day (warn operators if <3 days)
-- Store scaling factor in batch event notes for audit trail
-- If overlap contains all zeros, skip scaling (preserve zeros)
-- If new window has no overlap, log integrity warning and store unstitched (alert operators)
+**Cons**:
+- Fragile; breaks on any UI change
+- Terms of Service concerns (automated scraping)
+- Must implement rate limiting, cookie management, captcha handling
+- High maintenance burden
 
-**Testing Strategy**:
-- Golden-file tests: Known overlap scenarios (normal, outlier-heavy, all-zeros)
-- Property tests: Verify stitched series has smoother transitions than raw
-- Unit tests: Edge cases (single-day overlap, negative values, NaN handling)
+**Rejected**: Too fragile and high-risk for operational surveillance system.
 
-**References**:
-- "The Parable of Google Flu" (Lazer et al., 2014): Discusses normalization challenges
-- "Nowcasting" approaches in epidemiological surveillance literature
+#### Option C: SerpAPI (Commercial Service)
+**Description**: Paid API service providing structured Google Trends data
 
----
+**Pros**:
+- Stable, documented API
+- Handles rate limits and compliance
+- SLA guarantees
 
-## 3. Sparse-Day Resampling Policy
+**Cons**:
+- Monthly cost ($50-250 depending on volume)
+- External dependency/vendor lock-in
+- Overkill for MVP with 10 keywords
 
-### Decision: 3-Step Conservative Fallback
+**Rejected**: Unnecessary cost and complexity for MVP; consider post-pilot if pytrends proves unstable.
 
-**Chosen**: (1) Re-fetch with wider window → (2) Promote to weekly if ≥3-day run → (3) Mark below_detection
+### Decision
+**Use pytrends** with defensive error handling and fallback policies documented in batch event notes.
 
-**Rationale**:
-- **"Do not manufacture precision"** (constitution ethical principle)
-- Honest flagging via `granularity` and `quality` columns preserves data integrity
-- Conservative approach avoids interpolation artifacts that could mislead analysts
-- Weekly anchoring adds value for operational use while being transparent about coarseness
-
-**Step-by-Step Policy**:
-
-**Step 1: Re-fetch with Wider Window**
-- If daily data missing for date D, expand request window to D ± 7 days
-- Increases chance of Google Trends returning daily granularity
-- If successful, mark `granularity=daily`, `quality=true`
-
-**Step 2: Promote to Weekly (if ≥3-day run)**
-- If re-fetch still fails AND ≥3 consecutive missing days detected
-- Request weekly RSV for that week
-- Anchor weekly value to adjacent true_daily days using overlap scaling
-- Assign same weekly-anchored value to all days in that week (flat profile)
-- Mark `granularity=weekly`, `impute_method=weekly_flat`, `quality=coarse`
-- **Exclude from future stitching**: Coarse rows not used for scaling factor calculation
-
-**Step 3: Mark Below Detection**
-- If weekly data also unavailable or all-zero
-- Leave days unpublished (NULL in rsv_stitched column)
-- Raise Data Health warning: `status=below_detection`
-- Log in batch event notes for operator visibility
-
-**Alternatives Considered**:
-
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| Linear interpolation | Smooth series | **Manufactures precision**; violates constitution | Rejected |
-| Cross-keyword borrowing | Fills more gaps | Too complex; domain assumptions | Rejected |
-| Leave gaps empty | Simple, honest | Loses operational value | Acceptable but enhanced by Step 2 |
-| Forward-fill previous day | Simple | Misleading; assumes no change | Rejected |
-
-**Implementation Details**:
-- Minimum run length for weekly promotion: 3 days (configurable in constitution review)
-- Single isolated missing days NOT promoted to weekly; left NULL
-- Coarse records flagged in Data Health widget with distinct badge color
-- Batch events include counts: `true_daily_count`, `weekly_flat_count`, `missing_count`
-
-**Testing Strategy**:
-- Unit tests: 3-day run triggers weekly, 2-day run does not
-- Integration tests: End-to-end sparse scenario (missing → re-fetch → weekly → store)
-- Golden-file tests: Known sparse patterns (isolated gaps, long runs, all-unavailable)
-
-**References**:
-- Constitution Principle I: "Do not manufacture precision"
-- WHO surveillance guidelines: Transparency about data limitations
+**Validation Criteria**:
+- ≥99% fetch success rate during 6-month pilot
+- Median fetch latency <30 seconds per keyword
 
 ---
 
-## 4. Job Scheduling
+## Decision 2: Time-Series Stitching Algorithm
 
-### Decision: APScheduler In-Container with Jitter
+### Problem Statement
+Google Trends normalizes each request window independently (0-100 scale relative to window's peak). Concatenating raw values creates artificial level jumps. Need robust stitching to produce continuous, comparable time series.
 
-**Chosen**: APScheduler library running inside Docker container with ±3-5 minute random jitter
+### Options Evaluated
 
-**Rationale**:
-- Self-contained: No external cron dependency on host system
-- Jitter prevents bursty API calls at exactly 07:30 ICT (reduces rate-limit risk)
-- Simpler operator setup: `docker compose up -d` handles everything
-- Programmatic control: Easy to implement recovery logic (check last fetch; trigger backfill if >24h)
+#### Option A: Trimmed Mean Overlap Scaling ✅ SELECTED
+**Description**: Compute scaling factor from overlap region using trimmed mean (drop highest/lowest 20%)
 
-**Configuration**:
+**Pros**:
+- Simple, explainable algorithm (suitable for non-technical stakeholders)
+- Down-weights single-day outliers without complex statistics
+- Preserves zeros (no manufactured signal)
+- Robust to small sample sizes (≥1 day overlap)
+- Literature-supported: used in time series normalization (Hyndman & Athanasopoulos, 2018)
+
+**Cons**:
+- Requires ≥1 day overlap between consecutive windows
+- Less statistically efficient than regression for large overlaps
+
+**Implementation Notes**:
+```python
+import numpy as np
+from scipy.stats import trim_mean
+
+def compute_scaling_factor(old_window_overlap, new_window_overlap):
+    # Trim 20% from each tail
+    old_trimmed = trim_mean(old_window_overlap, proportiontocut=0.2)
+    new_trimmed = trim_mean(new_window_overlap, proportiontocut=0.2)
+
+    if new_trimmed == 0:
+        return 1.0  # Avoid division by zero; preserve zeros
+
+    return old_trimmed / new_trimmed
+```
+
+#### Option B: Median Scaling
+**Description**: Use median of overlap ratios as scaling factor
+
+**Pros**:
+- Simple, robust to extreme outliers
+- Requires minimal overlap data
+
+**Cons**:
+- Too aggressive for small overlaps (≤3 days)
+- Discards tail information that may be relevant
+
+**Rejected**: Trimmed mean provides better balance for typical 7-day overlaps.
+
+#### Option C: Linear Regression
+**Description**: Fit linear model to overlap points, use slope as scaling factor
+
+**Pros**:
+- Statistically efficient for large overlaps
+- Can detect and adjust for trends
+
+**Cons**:
+- Overfitting risk with small overlaps (<5 days)
+- Difficult to explain to non-technical users
+- Assumes linear relationship (not always true for media-driven spikes)
+
+**Rejected**: Too complex for MVP; consider post-pilot if trimmed mean shows systematic bias.
+
+### Decision
+**Use trimmed mean (20% trim)** with minimum 1-day overlap requirement.
+
+**Validation Criteria**:
+- Stitched series shows <20% jumps on consecutive stable days
+- Golden-file tests with known overlap scenarios pass
+
+---
+
+## Decision 3: Sparse-Day Resampling Policy
+
+### Problem Statement
+Google Trends sometimes returns no daily data for low-volume keywords on specific days. Need policy to fill gaps without manufacturing false precision.
+
+### Options Evaluated
+
+#### Option A: 3-Step Fallback (Re-fetch → Weekly → Below Detection) ✅ SELECTED
+**Description**:
+1. Re-fetch with wider window (e.g., 30→90 days) to see if daily data becomes available
+2. If ≥3 consecutive days missing, promote to weekly granularity (flat imputation)
+3. If weekly unavailable, mark as `below_detection` (no value)
+
+**Pros**:
+- Honest flagging via granularity/quality metadata
+- Avoids interpolation artifacts (constitution ethical principle: no manufactured precision)
+- Conservative approach preserves trust
+- Analysts see explicit "coarse" badges for weekly-derived days
+
+**Cons**:
+- Introduces gaps in time series
+- Weekly values less precise than daily
+
+**Implementation Notes**:
+- Store impute_method='weekly_flat', quality='coarse' for promoted days
+- Exclude coarse records from future stitching calculations
+- Data Health widget shows count breakdown (true_daily, weekly_flat, missing)
+
+#### Option B: Linear Interpolation
+**Description**: Fill gaps by linearly interpolating between adjacent days
+
+**Pros**:
+- No gaps in time series
+- Smooth transitions
+
+**Cons**:
+- Manufactures precision where none exists (violates constitution principle)
+- Can create misleading trends (e.g., interpolating through sudden spike)
+- Analysts cannot distinguish real vs. imputed data
+
+**Rejected**: Unacceptable for public health surveillance; integrity over completeness.
+
+#### Option C: Cross-Keyword Borrowing
+**Description**: Use correlated keywords to estimate missing values
+
+**Pros**:
+- Leverages domain knowledge (symptom co-occurrence)
+
+**Cons**:
+- Too complex for MVP
+- Assumes stable cross-keyword correlations (not validated)
+- Requires correlation matrix maintenance
+
+**Rejected**: Defer to future research phase; MVP uses simpler fallback.
+
+### Decision
+**Use 3-step fallback policy** with explicit quality flagging.
+
+**Validation Criteria**:
+- ≥90% of days have true_daily quality during pilot
+- Operators rate data transparency as "high" on feasibility survey
+
+---
+
+## Decision 4: Scheduling Mechanism
+
+### Problem Statement
+Need daily ingestion at 07:30 ICT with jitter to avoid API rate limit clustering. Deployment on single Linux server.
+
+### Options Evaluated
+
+#### Option A: APScheduler In-Container ✅ SELECTED
+**Description**: Python scheduling library running inside Docker container
+
+**Pros**:
+- Self-contained (no external dependencies)
+- Random jitter easily implemented (±3-5 minutes)
+- Easier operator setup (`docker compose up -d`)
+- Works on any host OS (cross-platform)
+- No host cron configuration needed
+
+**Cons**:
+- Scheduler dies if container crashes (mitigated by Docker restart policy)
+- Less familiar to traditional sysadmins
+
+**Implementation Notes**:
 ```python
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import random
 
-scheduler = BlockingScheduler()
-jitter = random.randint(3, 5)  # minutes
+scheduler = BlockingScheduler(timezone='Asia/Bangkok')
 
-scheduler.add_job(
-    func=run_daily_ingestion,
-    trigger=CronTrigger(hour=7, minute=30 + jitter, timezone='Asia/Bangkok'),
-    id='daily_fetch',
-    replace_existing=True
-)
+def daily_fetch_with_jitter():
+    jitter_seconds = random.randint(180, 300)  # 3-5 minutes
+    time.sleep(jitter_seconds)
+    run_ingestion()
+
+scheduler.add_job(daily_fetch_with_jitter, CronTrigger(hour=7, minute=30))
+scheduler.start()
 ```
 
-**Alternatives Considered**:
+#### Option B: Host Cron
+**Description**: Use host system's cron to trigger Docker exec command
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| Host cron | Standard Unix tool | Requires host config; no programmatic jitter | Viable alternative |
-| Kubernetes CronJob | Cloud-native | Overkill for single-server MVP | Deferred |
-| Systemd timers | Linux-native | Requires host config; less portable | Rejected |
-| Cloud scheduler (AWS EventBridge) | Managed service | Vendor lock-in; cost | Deferred |
+**Pros**:
+- Standard Unix scheduling mechanism
+- Survives container restarts
+- Familiar to operators
 
-**Implementation Details**:
-- Scheduler runs in `cli/main.py` when `--daemon` flag present
-- On container startup: Check last successful fetch timestamp
-  - If >24 hours ago: Trigger 14-day recovery backfill before resuming daily schedule
-  - Else: Wait for next scheduled run
-- Graceful shutdown: `SIGTERM` handler flushes logs and closes DB connection
-- Health endpoint includes next scheduled run time
+**Cons**:
+- Requires host configuration (not containerized)
+- Harder to implement jitter (requires separate script)
+- Platform-dependent (Linux/macOS only)
 
-**Testing Strategy**:
-- Unit tests: Mock time; verify jitter applied correctly
-- Integration tests: Verify recovery backfill triggers after simulated outage
-- Manual tests: Observe actual schedule in staging environment
+**Rejected**: Prefer containerized solution for portability.
 
-**References**:
-- APScheduler Documentation: https://apscheduler.readthedocs.io/
-- Constitution Performance Goal: Daily ingestion by 07:30 ICT
+#### Option C: Kubernetes CronJob
+**Description**: Use Kubernetes-native CronJob resource
+
+**Pros**:
+- Cloud-native, scalable
+- Built-in job history and retry policies
+
+**Cons**:
+- Requires K8s infrastructure (overkill for single-server MVP)
+- Added operational complexity
+- Cost overhead
+
+**Rejected**: Too heavy for MVP; consider post-pilot if scaling beyond single server.
+
+### Decision
+**Use APScheduler in-container** with Docker restart policy `unless-stopped`.
+
+**Validation Criteria**:
+- Daily ingestion executes within 10 minutes of 07:30 ICT on 99% of days
+- Automatic 14-day backfill triggers on startup after >24h gap
 
 ---
 
-## 5. Data Storage
+## Decision 5: Data Storage Layer
 
-### Decision: SQLite with WAL Mode
+### Problem Statement
+Need ACID-compliant storage for RSV records and batch events with concurrent read support (Visualiser queries while Fetcher writes).
 
-**Chosen**: Single SQLite database file with Write-Ahead Logging (WAL) enabled
+### Options Evaluated
 
-**Rationale**:
-- **Simplicity**: File-based, no separate DB server, easy backups (copy file)
-- **WAL mode**: Allows concurrent reads (Visualiser, Analyser) while Fetcher writes
-- **ACID guarantees**: Transactions ensure data integrity even on crashes
-- **Sufficient scale**: 10 keywords × 90+ days × 3 tables = ~10k records/month (well within SQLite limits)
-- **Constitution alignment**: Single file fits "simplicity & reversibility" principle
+#### Option A: SQLite with WAL Mode ✅ SELECTED
+**Description**: File-based SQLite database with Write-Ahead Logging enabled
 
-**WAL Mode Benefits**:
-- Readers never blocked by writers (critical for Visualiser fail-safe operation)
-- Better concurrency than default rollback journal
-- Crash recovery: WAL log replays on next connection
+**Pros**:
+- Zero-setup (no separate server)
+- WAL mode allows concurrent reads during writes
+- ACID guarantees with transactions
+- Easy backup (copy single file)
+- Sufficient performance for ~10k records/month
+- Built-in to Python (no external dependencies)
 
-**Schema Strategy**:
-- Unique constraint on `(keyword, date)` in `raw_trenddata` enforces idempotence
-- UPSERT (`INSERT OR REPLACE`) allows safe reruns after failures
-- Append-only `events_raw_rsv_ingested` table for audit trail
-- Indexes on `batch_id`, `fetched_at_ict` for query performance
+**Cons**:
+- Single-writer limitation (acceptable: only Fetcher writes)
+- Not suitable for horizontal scaling (defer to PostgreSQL post-pilot)
 
-**Alternatives Considered**:
+**Implementation Notes**:
+```python
+import sqlite3
+conn = sqlite3.connect('googili.db')
+conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL
+conn.execute('PRAGMA foreign_keys=ON')   # Enforce FK constraints
+```
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| PostgreSQL | Enterprise features, better concurrency | Requires separate server; deployment complexity | Deferred post-MVP |
-| CSV files | Simple, portable | No ACID, no efficient queries, no constraints | Rejected |
-| Cloud DB (RDS, Firestore) | Managed service | Vendor lock-in, cost, latency | Deferred |
-| DuckDB | Fast analytics | Newer, less mature for write-heavy workloads | Watch for future |
+#### Option B: PostgreSQL
+**Description**: Full-featured relational database server
 
-**Implementation Details**:
-- Enable WAL on first connection: `PRAGMA journal_mode=WAL`
-- Connection pooling: Single connection per Fetcher instance (no concurrency within Fetcher)
-- Backup strategy: Daily file copy to `./archive` before monthly snapshot
-- Migration path: SQLite → PostgreSQL documented for scale-out (10x keywords, multi-province)
+**Pros**:
+- Multi-writer support
+- Better performance at scale
+- Advanced features (partitioning, replication)
 
-**Testing Strategy**:
-- Unit tests: Verify UPSERT idempotence (run same batch twice, no duplicates)
-- Integration tests: Concurrent reads (mock Visualiser) during Fetcher write
-- Crash tests: Kill Fetcher mid-transaction, verify DB consistency on restart
+**Cons**:
+- Requires separate server deployment
+- Added operational overhead (connection pooling, backups)
+- Overkill for single-server MVP
+- Resource overhead (memory, CPU)
 
-**References**:
-- SQLite WAL Documentation: https://www.sqlite.org/wal.html
-- Constitution Principle: "SQLite with WAL" explicitly recommended
+**Rejected**: Unnecessary complexity for MVP; migrate post-pilot if needed.
+
+#### Option C: CSV Files
+**Description**: Store records as CSV files on filesystem
+
+**Pros**:
+- Simple, human-readable
+- No database dependencies
+
+**Cons**:
+- No ACID guarantees
+- No efficient querying (must scan entire file)
+- No referential integrity
+- Concurrency issues
+
+**Rejected**: Insufficient for operational system; only suitable for archives.
+
+### Decision
+**Use SQLite with WAL mode** for MVP; document migration path to PostgreSQL.
+
+**Validation Criteria**:
+- Zero database corruption incidents during pilot
+- Query response time <100ms for Visualiser data requests
+- Concurrent read/write tested under load
 
 ---
 
-## 6. Health Endpoint
+## Decision 6: Health Endpoint Implementation
 
-### Decision: Lightweight Flask App on Port 8080
+### Problem Statement
+Need lightweight HTTP endpoint for Docker healthcheck and Visualiser polling, returning last fetch status and DB writability.
 
-**Chosen**: Minimal Flask application serving `/healthz` JSON endpoint
+### Options Evaluated
 
-**Rationale**:
-- **Minimal overhead**: Flask lightweight for single-endpoint use case (<50 lines)
-- **Docker healthcheck**: `curl http://localhost:8080/healthz` in container health probe
-- **Visualiser integration**: Polling endpoint provides Fetcher status without DB dependency
-- **Observability**: Returns last fetch timestamp, row counts, DB writability
+#### Option A: Flask Microservice ✅ SELECTED
+**Description**: Minimal Flask app serving single `/healthz` endpoint
 
-**Endpoint Spec**:
+**Pros**:
+- Lightweight (<50 lines)
+- Familiar to Python developers
+- Built-in development server sufficient for single endpoint
+- Easy to extend post-MVP
+
+**Cons**:
+- Development server not production-hardened (acceptable for internal endpoint)
+
+**Implementation Notes**:
+```python
+from flask import Flask, jsonify
+import sqlite3
+
+app = Flask(__name__)
+
+@app.route('/healthz')
+def health():
+    try:
+        conn = sqlite3.connect('googili.db', timeout=3)
+        cursor = conn.execute('SELECT * FROM v_latest_batch LIMIT 1')
+        batch = cursor.fetchone()
+        conn.close()
+
+        if batch:
+            return jsonify({'status': 'success', 'last_fetch': batch[2], 'rows': batch[3]}), 200
+        else:
+            return jsonify({'status': 'degraded', 'message': 'No batches found'}), 200
+    except Exception as e:
+        return jsonify({'status': 'fail', 'error': str(e)}), 503
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
 ```
-GET /healthz
-Response 200 OK (healthy):
-{
-  "status": "success",
-  "last_fetch": "2025-11-04T07:32:15+07:00",
-  "last_batch_id": "batch_20251104_073215",
-  "rows_written": 10,
-  "true_daily": 9,
-  "weekly_flat": 1,
-  "missing": 0,
-  "db_writable": true
-}
 
-Response 503 Service Unavailable (degraded):
-{
-  "status": "degraded",
-  "last_fetch": "2025-11-02T07:30:00+07:00",  # >24h ago
-  "error": "No successful fetch in 48 hours"
-}
-```
+#### Option B: FastAPI
+**Description**: Modern async Python framework
 
-**Alternatives Considered**:
+**Pros**:
+- Auto-generated OpenAPI docs
+- Type validation with Pydantic
+- Better performance (async)
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| FastAPI | Modern, OpenAPI docs | Heavier (uvicorn, pydantic); overkill for 1 endpoint | Deferred |
-| No HTTP (logs only) | Simplest | Hard for Docker healthcheck; Visualiser can't poll | Rejected |
-| Embedded in CLI | No separate server | Blocks CLI; harder to test | Rejected |
+**Cons**:
+- Heavier dependency chain
+- Overkill for single synchronous endpoint
+- Added complexity for MVP
 
-**Implementation Details**:
-- Flask runs in separate thread from scheduler (non-blocking)
-- Health checks query latest `events_raw_rsv_ingested` row
-- DB writability: Attempt `INSERT INTO health_probe (timestamp) VALUES (NOW())`; rollback
-- Timeout: 3-second query timeout; return 503 if DB locked
+**Rejected**: Unnecessary features for simple healthcheck.
 
-**Testing Strategy**:
-- Unit tests: Mock DB responses; verify JSON structure
-- Integration tests: Start Flask app, curl `/healthz`, verify response
-- Load tests: 100 concurrent `/healthz` requests (verify no contention with Fetcher writes)
+#### Option C: No HTTP Endpoint (Logs Only)
+**Description**: Rely solely on structured logs for health monitoring
 
-**References**:
-- Constitution Principle VIII: "/healthz endpoints per core"
-- Docker healthcheck docs: https://docs.docker.com/engine/reference/builder/#healthcheck
+**Pros**:
+- No additional service needed
+
+**Cons**:
+- Docker healthcheck requires HTTP endpoint
+- Harder for Visualiser to poll status
+- No machine-readable status
+
+**Rejected**: HTTP endpoint required for operational visibility.
+
+### Decision
+**Use Flask microservice** on port 8080 for `/healthz`.
+
+**Validation Criteria**:
+- Endpoint responds <100ms (99th percentile)
+- Docker healthcheck passes when Fetcher operational
+- Returns 503 when DB inaccessible or last fetch >48h ago
 
 ---
 
-## 7. Logging & Observability
+## Decision 7: Logging Strategy
 
-### Decision: Structured JSON Logging with Python `logging` Module
+### Problem Statement
+Need structured logs for troubleshooting, governance audits, and operational monitoring. Logs must include batch metadata, fetch errors, and quality warnings.
 
-**Chosen**: Python `logging` module configured for structured JSON output
+### Options Evaluated
 
-**Rationale**:
-- **Structured logs**: JSON format parseable by log aggregators (future ELK/Loki integration)
-- **Standard library**: No external dependency for basic logging
-- **Constitution alignment**: "Structured logging (JSON) for ingestion, analysis, errors"
+#### Option A: Structured JSON Logging ✅ SELECTED
+**Description**: Use Python `logging` with JSON formatter (e.g., `python-json-logger`)
 
-**Log Format**:
-```json
-{
-  "timestamp": "2025-11-04T07:32:15+07:00",
-  "level": "INFO",
-  "logger": "googili.fetcher.ingestion",
-  "message": "Batch ingestion complete",
-  "batch_id": "batch_20251104_073215",
-  "keywords": ["ไข้", "ไอ", "เจ็บคอ"],
-  "rows_written": 10,
-  "true_daily": 9,
-  "weekly_flat": 1,
-  "duration_seconds": 42.3
-}
+**Pros**:
+- Machine-parsable (ingestible by ELK, Loki, CloudWatch)
+- Consistent schema across log entries
+- Easy to filter/aggregate (e.g., "all ERROR level logs")
+- Supports nested metadata (batch_id, keywords, row counts)
+
+**Cons**:
+- Less human-readable in raw form (mitigated by `jq` or log viewer)
+
+**Implementation Notes**:
+```python
+import logging
+from pythonjsonlogger import jsonlogger
+
+logger = logging.getLogger()
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
+
+logger.info('Daily ingestion started', extra={
+    'batch_id': 'batch_20251104_073215',
+    'keywords': ['ไข้', 'ไอ'],
+    'window': '2025-11-03 to 2025-11-04'
+})
 ```
 
-**Log Levels**:
-- **DEBUG**: Detailed pytrends calls, stitching calculations
-- **INFO**: Batch start/end, summary stats
-- **WARNING**: Stitching degraded, sparse data promoted to weekly
-- **ERROR**: pytrends failures, DB write errors
-- **CRITICAL**: Fatal errors preventing ingestion
+#### Option B: Plain Text Logging
+**Description**: Standard Python logging with text format
 
-**Alternatives Considered**:
+**Pros**:
+- Human-readable
+- No additional dependencies
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| python-json-logger | Cleaner JSON formatting | External dependency | Consider if formatting issues arise |
-| structlog | Rich features, best-in-class | Heavy; overkill for MVP | Deferred |
-| Plain text logs | Simple | Not parseable by log aggregators | Rejected |
+**Cons**:
+- Hard to parse/aggregate
+- Inconsistent structure
 
-**Implementation Details**:
-- Log rotation: Daily rotation, keep 30 days (handled by Docker volume or host logrotate)
-- Sensitive data: Never log Thai search terms in production (config-driven debug flag)
-- Context: Include `batch_id` in all logs within a batch operation
-- Output: `stdout` (Docker captures); optionally file for local debugging
+**Rejected**: Insufficient for operational system requiring log aggregation.
 
-**Testing Strategy**:
-- Unit tests: Verify log messages produced at expected levels
-- Integration tests: Parse JSON logs, validate structure
-- Manual review: Inspect logs during staging runs for clarity
+### Decision
+**Use structured JSON logging** with `python-json-logger`.
 
-**References**:
-- Python logging docs: https://docs.python.org/3/library/logging.html
-- Constitution Principle VIII: "Structured logging (JSON)"
+**Validation Criteria**:
+- All batch events logged with complete metadata
+- Operators can filter logs by batch_id, status, keyword
+- Log retention: 30 days (Docker log rotation)
 
 ---
 
-## 8. Configuration Management
+## Decision 8: Configuration Management
 
-### Decision: TOML Configuration File
+### Problem Statement
+Need single source of truth for operational parameters (keywords, province, schedule, backfill settings) that is version-controlled and requires no in-app UI.
 
-**Chosen**: Single `config/googili.toml` file with version control
+### Options Evaluated
 
-**Rationale**:
-- **Human-readable**: TOML simpler than JSON/YAML for operators
-- **Version-controlled**: Git tracks all config changes (constitution audit requirement)
-- **Single file**: All settings in one place (keywords, schedule, thresholds)
-- **Python support**: Built-in `tomllib` in Python 3.11+
+#### Option A: TOML Configuration File ✅ SELECTED
+**Description**: Single `config/googili.toml` file with all parameters
 
-**Config Structure**:
+**Pros**:
+- Human-readable, supports comments
+- Native Python support via `tomli` (stdlib in 3.11+)
+- Type-safe (ints, bools, arrays)
+- Version-controlled (Git)
+- Explicit parameter names (self-documenting)
+
+**Cons**:
+- Requires container restart to reload (acceptable for MVP)
+
+**Implementation Notes**:
 ```toml
 [general]
-province = "TH-50"  # Chiang Mai
+province = "TH-50"
 timezone = "Asia/Bangkok"
 
 [keywords]
-terms = [
-  "ไข้",      # Fever
-  "ไอ",       # Cough
-  "เจ็บคอ",   # Sore throat
-  # ... 7 more keywords
-]
+terms = ["ไข้", "ไอ", "เจ็บคอ"]
 
 [schedule]
 daily_time = "07:30"
 jitter_minutes = [3, 5]
-backfill_on_startup_if_gap_hours = 24
 
 [backfill]
 initial_days = 90
 recovery_days = 14
-
-[stitching]
-min_overlap_days = 1
-trim_percent = 20  # Drop highest/lowest 20% for scaling factor
-
-[resampling]
-min_run_for_weekly = 3  # ≥3 consecutive missing days triggers weekly promotion
-
-[archive]
-output_dir = "./data/archive"
-cadence = "monthly"
-
-[health]
-port = 8080
-db_probe_timeout_seconds = 3
 ```
 
-**Alternatives Considered**:
+#### Option B: YAML
+**Description**: YAML configuration file
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| YAML | More features (anchors, etc.) | More complex; YAML security issues | Rejected |
-| JSON | Universal | Not human-friendly; no comments | Rejected |
-| Environment variables | 12-factor app pattern | Hard to manage 10+ keywords; no versioning | Rejected |
-| Database config | UI-editable | Violates constitution "config-as-code" principle | Rejected |
+**Pros**:
+- Human-readable
+- Widely used
 
-**Implementation Details**:
-- Load config at startup: `import tomllib; config = tomllib.load(f)`
-- Validation: Pydantic models for type checking and defaults
-- Effective parameters logged at startup for reproducibility
-- Changes require container restart (intentional; encourages git commits)
+**Cons**:
+- Less type-safe (implicit type coercion)
+- No native Python support (requires `PyYAML`)
+- Indentation-sensitive (error-prone)
 
-**Testing Strategy**:
-- Unit tests: Valid TOML loads correctly; invalid TOML raises clear error
-- Integration tests: Override config path via env var for test fixtures
-- Schema validation: Pydantic ensures required fields present
+**Rejected**: TOML clearer and stdlib-supported in Python 3.11+.
 
-**References**:
-- TOML specification: https://toml.io/en/
-- Constitution Principle VII: "Configuration-as-code (single file)"
+#### Option C: Environment Variables
+**Description**: Pass all config via env vars or .env file
+
+**Pros**:
+- 12-factor app pattern
+- Easy to override in Docker
+
+**Cons**:
+- Verbose for complex structures (arrays of keywords)
+- No comments or documentation inline
+- Hard to version-control complex configs
+
+**Rejected**: Too limited for structured keyword lists.
+
+### Decision
+**Use TOML configuration file** at `config/googili.toml`.
+
+**Validation Criteria**:
+- All parameters documented inline via comments
+- System logs effective config at startup
+- Config changes require explicit restart (logged in batch event)
 
 ---
 
-## 9. Containerization & Deployment
+## Decision 9: Deployment & Orchestration
 
-### Decision: Docker + Docker Compose for Single-Server MVP
+### Problem Statement
+Need reproducible deployment for Linux server with minimal operator setup. Target: single-command startup.
 
-**Chosen**: Dockerfile with multi-stage build; `docker-compose.yml` for orchestration
+### Options Evaluated
 
-**Rationale**:
-- **Portability**: Runs on any Linux server with Docker installed
-- **Reproducible builds**: Pinned Python 3.11-slim base image
-- **Simple deployment**: `docker compose up -d` for operators
-- **Volume mounts**: Persist DB and config outside container
+#### Option A: Docker + Docker Compose ✅ SELECTED
+**Description**: Containerized service defined in `docker-compose.yml`
 
-**Dockerfile Strategy**:
-```dockerfile
-FROM python:3.11-slim AS base
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+**Pros**:
+- Single-command setup: `docker compose up -d`
+- Reproducible environment (Python 3.11, dependencies locked)
+- Easy volume mounts for data persistence
+- Built-in healthcheck support
+- Restart policies (`unless-stopped`)
+- Works on any Linux/macOS/Windows host
 
-FROM base AS runtime
-COPY src/ ./src/
-ENV TZ=Asia/Bangkok
-ENV PYTHONUNBUFFERED=1
-CMD ["python", "-m", "googili.fetcher", "run", "--daemon"]
-```
+**Cons**:
+- Requires Docker installed on host
+- Single-server limitation (no orchestration)
 
-**docker-compose.yml**:
+**Implementation Notes**:
 ```yaml
 services:
   fetcher:
@@ -499,61 +610,74 @@ services:
       - TZ=Asia/Bangkok
       - LOG_LEVEL=INFO
     volumes:
-      - ./data:/app/data          # SQLite + archives
-      - ./config:/app/config      # googili.toml
+      - ./data:/app/data
+      - ./config:/app/config:ro
     ports:
-      - "8080:8080"  # /healthz endpoint
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 3s
       retries: 3
     restart: unless-stopped
-    networks:
-      - googili_net
-
-networks:
-  googili_net:
-    driver: bridge
 ```
 
-**Alternatives Considered**:
+#### Option B: Kubernetes
+**Description**: Deploy as K8s Deployment with CronJob
 
-| Alternative | Pros | Cons | Verdict |
-|------------|------|------|---------|
-| Kubernetes | Scalable, cloud-native | Overkill for single-server MVP | Deferred |
-| Systemd service | Native Linux | Harder dependency management | Rejected |
-| Bare metal Python | No container overhead | Harder to replicate environment | Rejected |
+**Pros**:
+- Production-grade orchestration
+- Scalable, self-healing
+- Advanced scheduling
 
-**Implementation Details**:
-- Multi-stage build: Separate build/runtime stages for smaller image
-- Health probe: Docker restarts container if `/healthz` fails 3 times
-- Volume mounts: `./data` and `./config` on host for persistence
-- Network: Bridge network `googili_net` for future Analyser/Visualiser communication
+**Cons**:
+- Requires K8s cluster (overkill for single-server MVP)
+- Steep learning curve for operators
+- Added complexity (manifests, services, ingress)
 
-**Testing Strategy**:
-- Build tests: `docker build` succeeds; image size < 200MB
-- Compose tests: `docker compose up` starts healthy container
-- Volume tests: Create file in container; verify visible on host
+**Rejected**: Too heavy for MVP; defer to post-pilot scaling phase.
 
-**References**:
-- Docker best practices: https://docs.docker.com/develop/dev-best-practices/
-- User-provided plan: Docker+compose architecture
+#### Option C: Bare Metal + systemd
+**Description**: Install Python directly on host, use systemd service
+
+**Pros**:
+- No Docker dependency
+- Direct resource access
+
+**Cons**:
+- Environment reproducibility issues (Python versions, dependency conflicts)
+- Manual setup (not single-command)
+- Harder to migrate/backup
+
+**Rejected**: Prefer containerized approach for reproducibility.
+
+### Decision
+**Use Docker + Docker Compose** for MVP deployment.
+
+**Validation Criteria**:
+- Operator can deploy from scratch with `docker compose up -d` in <5 minutes
+- Service survives host reboot (restart policy)
+- Data persists across container updates (volume mounts)
 
 ---
 
-## Summary of Decisions
+## Summary Table
 
-| Component | Decision | Key Rationale |
-|-----------|----------|---------------|
-| **Google Trends Access** | pytrends library | Mature, active, supports daily/weekly granularity |
-| **Stitching** | Trimmed mean overlap scaling | Robust to outliers, explainable, constitution-aligned |
-| **Resampling** | 3-step fallback (re-fetch → weekly → below_detection) | Honest about precision, avoids interpolation |
-| **Scheduling** | APScheduler in-container | Self-contained, jitter support, recovery logic |
-| **Storage** | SQLite + WAL | Simple, concurrent-read friendly, ACID guarantees |
-| **Health** | Flask /healthz endpoint | Lightweight, Docker-compatible, Visualiser-compatible |
-| **Logging** | Structured JSON (Python logging) | Parseable, constitution-mandated |
-| **Config** | TOML single file | Human-readable, version-controlled |
-| **Deployment** | Docker + Compose | Portable, operator-friendly, MVP-appropriate |
+| Decision | Selected Option | Key Trade-off | Validation Metric |
+|----------|----------------|---------------|------------------|
+| Google Trends Access | pytrends | Unofficial API vs. stability | ≥99% fetch success rate |
+| Stitching Algorithm | Trimmed Mean | Simplicity vs. statistical efficiency | <20% jumps on stable days |
+| Sparse-Day Policy | 3-Step Fallback | Honesty vs. completeness | ≥90% true_daily quality |
+| Scheduling | APScheduler | Self-contained vs. cron familiarity | 99% runs within 10min of target |
+| Storage | SQLite WAL | Simplicity vs. scalability | <100ms query latency |
+| Health Endpoint | Flask | Lightweight vs. feature-richness | <100ms response time |
+| Logging | JSON | Parsability vs. human-readability | Operators can filter by batch_id |
+| Configuration | TOML | Type-safety vs. flexibility | All params documented inline |
+| Deployment | Docker Compose | Reproducibility vs. bare-metal performance | <5min setup from scratch |
 
-All decisions align with Googili constitution v1.1.0 and prioritize simplicity, explainability, and operational reliability for public health surveillance.
+---
+
+**Status**: ✅ Complete and aligned with Googili constitution v1.1.0
+
+**Last Updated**: 2025-11-04
+**Next Review**: On completion of 6-month pilot (constitution quarterly review)
