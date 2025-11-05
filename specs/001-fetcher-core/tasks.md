@@ -61,11 +61,11 @@ Per plan.md, single backend service structure:
 
 ### Tests for User Story 1 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
-- [ ] T013 [P] [US1] Unit test for pytrends wrapper in fetcher/tests/unit/test_trends_fetcher.py (mock pytrends responses, test error handling, rate limiting)
-- [ ] T014 [P] [US1] Unit test for batch event creation in fetcher/tests/unit/test_batch_event.py (validate batch_id generation, status transitions, metadata completeness)
-- [ ] T015 [P] [US1] Contract test for RSV record schema in fetcher/tests/contract/test_rsv_record_schema.py (verify all columns, constraints, foreign keys per database-schema.sql)
-- [ ] T016 [P] [US1] Contract test for batch event schema in fetcher/tests/contract/test_batch_event_schema.py (verify event structure matches spec.md requirements)
-- [ ] T017 [US1] Integration test for daily ingestion in fetcher/tests/integration/test_daily_ingestion.py (end-to-end: fetch → persist → verify batch event + RSV records)
+- [X] T013 [P] [US1] Unit test for pytrends wrapper in fetcher/tests/unit/test_trends_fetcher.py (mock pytrends responses, test error handling, rate limiting)
+- [X] T014 [P] [US1] Unit test for batch event creation in fetcher/tests/unit/test_batch_event.py (validate batch_id generation, status transitions, metadata completeness)
+- [X] T015 [P] [US1] Contract test for RSV record schema in fetcher/tests/contract/test_rsv_record_schema.py (verify all columns, constraints, foreign keys per database-schema.sql)
+- [X] T016 [P] [US1] Contract test for batch event schema in fetcher/tests/contract/test_batch_event_schema.py (verify event structure matches spec.md requirements)
+- [X] T017 [US1] Integration test for daily ingestion in fetcher/tests/integration/test_daily_ingestion.py (end-to-end: fetch → persist → verify batch event + RSV records)
 
 ### Implementation for User Story 1
 

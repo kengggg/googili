@@ -4,8 +4,12 @@ Fetcher Core Data Models
 Domain models for RSV data, keywords, batches, and health probes.
 """
 
-# Models will be imported here as they are created
-# Example: from .rsv_data import RSVDataPoint
-# Example: from .keyword import Keyword
+from .rsv_record import RSVRecord
+from .batch_event import BatchEvent
+from .keyword_config import KeywordConfig
 
-__all__ = []
+__all__ = [
+    'RSVRecord',
+    'BatchEvent',
+    'KeywordConfig',
+]
