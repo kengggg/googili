@@ -1,0 +1,51 @@
+# GOOGILI Fetcher Core Configuration
+# Copy to googili.toml and customize for your deployment
+
+[general]
+province = "TH-50"  # ISO 3166-2 code for Chiang Mai Province
+timezone = "Asia/Bangkok"  # ICT timezone for all timestamps
+
+[keywords]
+# Thai ILI-related search terms for Chiang Mai
+terms = [
+  "ไข้",           # Fever
+  "ไอ",            # Cough
+  "เจ็บคอ",        # Sore throat
+  "น้ำมูก",        # Runny nose
+  "ปวดศีรษะ",      # Headache
+  "เหนื่อย",       # Fatigue
+  "ปวดกล้ามเนื้อ", # Muscle pain
+  "อาเจียน",       # Vomiting
+  "ท้องเสีย",      # Diarrhea
+  "หายใจลำบาก"     # Shortness of breath
+]
+
+[schedule]
+# Daily ingestion schedule
+daily_time = "07:30"  # HH:MM format in Asia/Bangkok timezone
+jitter_minutes = [3, 5]  # Random jitter range to avoid rate limiting
+backfill_on_startup_if_gap_hours = 24  # Trigger recovery backfill if last fetch >24h ago
+
+[backfill]
+# Backfill settings
+initial_days = 90  # Days to backfill on first run (empty database)
+recovery_days = 14  # Days to backfill after outage >24h
+
+[stitching]
+# Overlap-based stitching configuration
+min_overlap_days = 1  # Minimum overlap days (warn if less)
+trim_percent = 20  # Trim percentage for trimmed mean (0-50)
+
+[resampling]
+# Sparse-day resampling policy
+min_run_for_weekly = 3  # Minimum consecutive missing days to trigger weekly promotion
+
+[archive]
+# Monthly archive snapshots
+output_dir = "./data/archive"  # Directory for CSV exports
+cadence = "monthly"  # Archive frequency
+
+[health]
+# Health endpoint configuration
+port = 8080  # /healthz endpoint port
+db_probe_timeout_seconds = 3  # Database writability test timeout

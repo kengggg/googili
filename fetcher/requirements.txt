@@ -1,0 +1,32 @@
+# Fetcher Core Dependencies - Python 3.11+
+# Google Trends RSV Data Ingestion
+
+# Google Trends Access
+pytrends>=4.9.0
+
+# Scheduling
+APScheduler>=3.10.0
+
+# HTTP Server (Health Endpoint)
+Flask>=3.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+
+# Logging
+python-json-logger>=2.0.7
+
+# Data Processing & Statistics
+scipy>=1.11.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Configuration
+tomli>=2.0.1; python_version < "3.11"
+
+# Development Tools
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0

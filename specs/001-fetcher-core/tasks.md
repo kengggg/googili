@@ -27,11 +27,11 @@ Per plan.md, single backend service structure:
 
 **Purpose**: Project initialization and basic directory structure per plan.md
 
-- [ ] T001 Create project directory structure (fetcher/src/{models,services,cli,lib}, fetcher/tests/{unit,integration,contract,golden}, fetcher/config)
-- [ ] T002 Initialize Python 3.11 project with requirements.txt (pytrends, APScheduler, Flask, pytest, python-json-logger, scipy)
-- [ ] T003 [P] Create .gitignore for Python project (venv/, __pycache__/, *.pyc, data/, *.db)
-- [ ] T004 [P] Create fetcher/README.md with quick start instructions
-- [ ] T005 [P] Create fetcher/src/__init__.py as package marker
+- [X] T001 Create project directory structure (fetcher/src/{models,services,cli,lib}, fetcher/tests/{unit,integration,contract,golden}, fetcher/config)
+- [X] T002 Initialize Python 3.11 project with requirements.txt (pytrends, APScheduler, Flask, pytest, python-json-logger, scipy)
+- [X] T003 [P] Create .gitignore for Python project (venv/, __pycache__/, *.pyc, data/, *.db)
+- [X] T004 [P] Create fetcher/README.md with quick start instructions
+- [X] T005 [P] Create fetcher/src/__init__.py as package marker
 
 ---
 
@@ -41,13 +41,13 @@ Per plan.md, single backend service structure:
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Implement database connection module in fetcher/src/lib/db.py (SQLite with WAL mode, connection pooling, PRAGMA settings)
-- [ ] T007 [P] Implement TOML configuration loader in fetcher/src/lib/config.py (loads googili.toml, validates structure)
-- [ ] T008 [P] Implement structured JSON logger in fetcher/src/lib/logger.py (python-json-logger, batch metadata support)
-- [ ] T009 Apply database schema from contracts/database-schema.sql (create tables, indexes, views, triggers)
-- [ ] T010 [P] Create example configuration file fetcher/config/googili.toml.example (10 Thai keywords, Chiang Mai TH-50, schedule settings)
-- [ ] T011 [P] Implement timezone utilities in fetcher/src/lib/timezone_utils.py (Asia/Bangkok handling, ICT timestamp creation)
-- [ ] T012 Create base exception classes in fetcher/src/lib/exceptions.py (FetcherException, DatabaseException, ConfigException, PyTrendsException)
+- [X] T006 Implement database connection module in fetcher/src/lib/db.py (SQLite with WAL mode, connection pooling, PRAGMA settings)
+- [X] T007 [P] Implement TOML configuration loader in fetcher/src/lib/config.py (loads googili.toml, validates structure)
+- [X] T008 [P] Implement structured JSON logger in fetcher/src/lib/logger.py (python-json-logger, batch metadata support)
+- [X] T009 Apply database schema from contracts/database-schema.sql (create tables, indexes, views, triggers)
+- [X] T010 [P] Create example configuration file fetcher/config/googili.toml.example (10 Thai keywords, Chiang Mai TH-50, schedule settings)
+- [X] T011 [P] Implement timezone utilities in fetcher/src/lib/timezone_utils.py (Asia/Bangkok handling, ICT timestamp creation)
+- [X] T012 Create base exception classes in fetcher/src/lib/exceptions.py (FetcherException, DatabaseException, ConfigException, PyTrendsException)
 
 **Checkpoint**: Foundation ready - database schema applied, config loadable, logging functional. User story implementation can now begin in parallel.
 
