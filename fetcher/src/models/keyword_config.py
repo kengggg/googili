@@ -9,8 +9,12 @@ Constitution alignment:
 - Principle IV: Data Governance - Province scoping enforced
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+from datetime import datetime
 from typing import Optional, Dict, Any
+from zoneinfo import ZoneInfo
+
+ICT = ZoneInfo("Asia/Bangkok")
 
 
 @dataclass
@@ -21,12 +25,14 @@ class KeywordConfig:
     Attributes:
         term: Thai keyword to track (e.g., "ไข้", "ไอ")
         active: Whether keyword is currently active for tracking
+        created_at: Timestamp when keyword was added (ICT)
         province_code: ISO 3166-2 province code (TH-50 for Chiang Mai)
         notes: Optional notes about keyword (e.g., synonym info, deprecation reason)
     """
 
     term: str
     active: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(ICT))
     province_code: str = 'TH-50'
     notes: Optional[str] = None
 
@@ -66,7 +72,13 @@ class KeywordConfig:
         Returns:
             Dictionary with all fields
         """
-        return asdict(self)
+        data = asdict(self)
+
+        # Convert created_at to ISO 8601 string
+        if isinstance(self.created_at, datetime):
+            data['created_at'] = self.created_at.isoformat()
+
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'KeywordConfig':
@@ -82,6 +94,10 @@ class KeywordConfig:
         # Convert active from 1/0 (SQLite) to bool
         if isinstance(data.get('active'), int):
             data['active'] = bool(data['active'])
+
+        # Parse created_at from string
+        if isinstance(data.get('created_at'), str):
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
 
         return cls(**data)
 

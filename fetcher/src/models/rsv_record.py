@@ -26,12 +26,13 @@ class RSVRecord:
         keyword: Thai keyword term (e.g., "ไข้", "ไอ")
         date: Date of RSV measurement (YYYY-MM-DD)
         rsv_raw: Raw RSV value from Google Trends (0-100 scale)
+        source_window_start: Start date of fetch window (for provenance)
         batch_id: Foreign key to events_raw_rsv_ingested (provenance)
         rsv_stitched: Stitched RSV value (after overlap-based scaling)
         granularity: 'daily' or 'weekly'
-        quality: 'true_daily', 'weekly_flat', or 'below_detection'
+        quality: 'true' (high quality) or 'coarse' (degraded quality)
         impute_method: Method used if imputed (e.g., 'weekly_flat')
-        inserted_at_utc: UTC timestamp when record inserted
+        fetched_at_ict: ICT timestamp when record fetched
     """
 
     # Primary key fields
@@ -41,15 +42,16 @@ class RSVRecord:
     # RSV values
     rsv_raw: int
 
-    # Provenance
+    # Provenance (required)
+    source_window_start: date
     batch_id: str
 
     # Optional fields with defaults
     rsv_stitched: Optional[float] = None
     granularity: str = 'daily'
-    quality: str = 'true_daily'
+    quality: str = 'true'
     impute_method: Optional[str] = None
-    inserted_at_utc: Optional[datetime] = field(default_factory=lambda: datetime.now(ZoneInfo("UTC")))
+    fetched_at_ict: Optional[datetime] = field(default_factory=lambda: datetime.now(ICT))
 
     def __post_init__(self):
         """Validate field values after initialization."""
@@ -58,8 +60,8 @@ class RSVRecord:
         if self.granularity not in valid_granularities:
             raise ValueError(f"granularity must be one of {valid_granularities}, got '{self.granularity}'")
 
-        # Validate quality
-        valid_qualities = ['true_daily', 'weekly_flat', 'below_detection']
+        # Validate quality (matches schema CHECK constraint)
+        valid_qualities = ['true', 'coarse']
         if self.quality not in valid_qualities:
             raise ValueError(f"quality must be one of {valid_qualities}, got '{self.quality}'")
 
@@ -80,16 +82,19 @@ class RSVRecord:
         Convert to dictionary for database insertion.
 
         Returns:
-            Dictionary with all fields, date and timestamp as strings
+            Dictionary with all fields, dates and timestamp as strings
         """
         data = asdict(self)
 
         # Convert date to ISO 8601 string (YYYY-MM-DD)
         data['date'] = self.date.isoformat()
 
-        # Convert inserted_at_utc to ISO 8601 string
-        if self.inserted_at_utc:
-            data['inserted_at_utc'] = self.inserted_at_utc.isoformat()
+        # Convert source_window_start to ISO 8601 string
+        data['source_window_start'] = self.source_window_start.isoformat()
+
+        # Convert fetched_at_ict to ISO 8601 string
+        if self.fetched_at_ict:
+            data['fetched_at_ict'] = self.fetched_at_ict.isoformat()
 
         return data
 
@@ -108,9 +113,13 @@ class RSVRecord:
         if isinstance(data.get('date'), str):
             data['date'] = date.fromisoformat(data['date'])
 
-        # Parse inserted_at_utc from string
-        if isinstance(data.get('inserted_at_utc'), str):
-            data['inserted_at_utc'] = datetime.fromisoformat(data['inserted_at_utc'])
+        # Parse source_window_start from string
+        if isinstance(data.get('source_window_start'), str):
+            data['source_window_start'] = date.fromisoformat(data['source_window_start'])
+
+        # Parse fetched_at_ict from string
+        if isinstance(data.get('fetched_at_ict'), str):
+            data['fetched_at_ict'] = datetime.fromisoformat(data['fetched_at_ict'])
 
         return cls(**data)
 
@@ -120,6 +129,7 @@ class RSVRecord:
         keyword: str,
         date_val: date,
         rsv_value: int,
+        source_window_start: date,
         batch_id: str,
         granularity: str = 'daily'
     ) -> 'RSVRecord':
@@ -130,6 +140,7 @@ class RSVRecord:
             keyword: Keyword term
             date_val: Date of measurement
             rsv_value: RSV value from pytrends (0-100)
+            source_window_start: Start date of fetch window (for provenance)
             batch_id: Batch identifier for provenance
             granularity: 'daily' or 'weekly'
 
@@ -140,9 +151,10 @@ class RSVRecord:
             keyword=keyword,
             date=date_val,
             rsv_raw=rsv_value,
+            source_window_start=source_window_start,
             batch_id=batch_id,
             granularity=granularity,
-            quality='true_daily' if granularity == 'daily' else 'weekly_flat'
+            quality='true' if granularity == 'daily' else 'coarse'
         )
 
     def is_stitched(self) -> bool:
@@ -151,16 +163,16 @@ class RSVRecord:
 
     def is_daily(self) -> bool:
         """Check if this is true daily granularity data."""
-        return self.granularity == 'daily' and self.quality == 'true_daily'
+        return self.granularity == 'daily' and self.quality == 'true'
 
     def is_high_quality(self) -> bool:
         """
         Check if record is high quality (usable for stitching factors).
 
-        Per FR-011: Only true_daily quality should be used for computing
+        Per FR-011: Only 'true' quality should be used for computing
         future scaling factors.
         """
-        return self.quality == 'true_daily'
+        return self.quality == 'true'
 
     def __repr__(self) -> str:
         """Human-readable representation."""

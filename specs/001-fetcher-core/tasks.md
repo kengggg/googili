@@ -69,12 +69,12 @@ Per plan.md, single backend service structure:
 
 ### Implementation for User Story 1
 
-- [ ] T018 [P] [US1] Create RSV Record model in fetcher/src/models/rsv_record.py (keyword, date, rsv_raw, batch_id, granularity, quality attributes per data-model.md)
-- [ ] T019 [P] [US1] Create Batch Event model in fetcher/src/models/batch_event.py (batch_id, status, counts, timestamps, notes per data-model.md)
-- [ ] T020 [P] [US1] Create Keyword Configuration model in fetcher/src/models/keyword_config.py (term, active, province_code per data-model.md)
-- [ ] T021 [US1] Implement TrendsFetcher service in fetcher/src/services/trends_fetcher.py (pytrends wrapper, daily/weekly granularity, TH-50 scoping, rate limiting with 3-5s jitter per research.md)
-- [ ] T022 [US1] Implement database persistence layer in fetcher/src/lib/db_operations.py (UPSERT for RSV records, INSERT for batch events, idempotence enforcement)
-- [ ] T023 [US1] Implement Ingestion service in fetcher/src/services/ingestion.py (orchestrates fetch → persist → batch event emission, error handling)
+- [X] T018 [P] [US1] Create RSV Record model in fetcher/src/models/rsv_record.py (keyword, date, rsv_raw, batch_id, granularity, quality attributes per data-model.md)
+- [X] T019 [P] [US1] Create Batch Event model in fetcher/src/models/batch_event.py (batch_id, status, counts, timestamps, notes per data-model.md)
+- [X] T020 [P] [US1] Create Keyword Configuration model in fetcher/src/models/keyword_config.py (term, active, province_code per data-model.md)
+- [X] T021 [US1] Implement TrendsFetcher service in fetcher/src/services/trends_fetcher.py (pytrends wrapper, daily/weekly granularity, TH-50 scoping, rate limiting with 3-5s jitter per research.md)
+- [X] T022 [US1] Implement database persistence layer in fetcher/src/lib/db_operations.py (UPSERT for RSV records, INSERT for batch events, idempotence enforcement)
+- [X] T023 [US1] Implement Ingestion service in fetcher/src/services/ingestion.py (orchestrates fetch → persist → batch event emission, error handling)
 - [ ] T024 [US1] Implement APScheduler configuration in fetcher/src/cli/scheduler.py (07:30 ICT schedule, ±3-5 min jitter per research.md Decision 4)
 - [ ] T025 [US1] Create CLI entry point in fetcher/src/cli/main.py (supports --daily, --daemon modes, loads config, initializes scheduler)
 - [ ] T026 [US1] Add batch event logging to Ingestion service (structured JSON logs with batch_id, keywords, row counts per Constitution Principle VIII)

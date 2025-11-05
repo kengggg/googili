@@ -43,18 +43,20 @@ CREATE INDEX IF NOT EXISTS idx_rsv_fetched ON raw_trenddata(fetched_at_ict DESC)
 
 CREATE TABLE IF NOT EXISTS events_raw_rsv_ingested (
     batch_id TEXT PRIMARY KEY,
+    batch_type TEXT NOT NULL CHECK(batch_type IN ('daily', 'initial_backfill', 'recovery_backfill', 'manual')),
     requested_keywords TEXT NOT NULL,  -- JSON array: ["ไข้", "ไอ", ...]
     requested_window TEXT NOT NULL,    -- "2025-11-03 to 2025-11-04"
-    rows_written INTEGER NOT NULL CHECK(rows_written >= 0),
-    true_daily_count INTEGER NOT NULL CHECK(true_daily_count >= 0),
-    weekly_flat_count INTEGER NOT NULL CHECK(weekly_flat_count >= 0),
-    missing_count INTEGER NOT NULL CHECK(missing_count >= 0),
-    status TEXT NOT NULL CHECK(status IN ('success', 'degraded', 'fail')),
     started_at_ict TIMESTAMP NOT NULL,
-    finished_at_ict TIMESTAMP,  -- NULL if crashed before completion
-    notes TEXT,  -- Human-readable: "all-zeros for X", "stitching degraded"
-
-    CHECK(rows_written = true_daily_count + weekly_flat_count)
+    finished_at_ict TIMESTAMP,  -- NULL if crashed before completion or still running
+    status TEXT NOT NULL CHECK(status IN ('running', 'success', 'degraded', 'fail')),
+    rows_written INTEGER NOT NULL DEFAULT 0 CHECK(rows_written >= 0),
+    rows_updated INTEGER NOT NULL DEFAULT 0 CHECK(rows_updated >= 0),
+    rows_missing INTEGER NOT NULL DEFAULT 0 CHECK(rows_missing >= 0),
+    quality_true_daily INTEGER CHECK(quality_true_daily >= 0),
+    quality_weekly_flat INTEGER CHECK(quality_weekly_flat >= 0),
+    quality_below_detection INTEGER CHECK(quality_below_detection >= 0),
+    notes TEXT,  -- Audit context: stitching factors, warnings, manual notes
+    error_message TEXT  -- Error details if status='fail'
 );
 
 -- Index for health queries (last successful fetch)

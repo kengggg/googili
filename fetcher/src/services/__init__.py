@@ -4,8 +4,10 @@ Fetcher Core Services
 Business logic services for RSV ingestion, stitching, scheduling, and health monitoring.
 """
 
-# Services will be imported here as they are created
-# Example: from .rsv_ingest import RSVIngestService
-# Example: from .scheduler import SchedulerService
+from .trends_fetcher import TrendsFetcher
+from .ingestion import IngestionService
 
-__all__ = []
+__all__ = [
+    'TrendsFetcher',
+    'IngestionService',
+]
