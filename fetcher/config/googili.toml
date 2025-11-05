@@ -1,0 +1,54 @@
+# ===========================
+# Googili — Fetcher Core (MVP)
+# Configuration-as-Code
+# ===========================
+# Per Constitution Principle VII: Single TOML file, version-controlled
+# Per spec.md: TH-50 (Chiang Mai) only for MVP
+
+[general]
+province = "TH-50"              # ISO 3166-2 code (Chiang Mai - MVP constraint)
+timezone = "Asia/Bangkok"       # ICT timezone for all timestamps
+
+[keywords]
+# Thai ILI-related keywords for surveillance
+# Per spec.md US1: ~10 keywords for Chiang Mai surveillance
+terms = [
+    "ไข้",           # Fever
+    "ไอ",            # Cough
+    "เจ็บคอ",        # Sore throat
+    "ปวดเมื่อย",    # Body ache
+    "น้ำมูก",        # Runny nose
+    "ปวดหัว",        # Headache
+    "หนาวสั่น",      # Chills
+    "ไข้สูง",        # High fever
+    "ไข้หวัด"        # Flu/cold
+]
+
+[schedule]
+daily_time = "07:30"                        # HH:MM format (24h) ICT
+jitter_minutes = [3, 5]                     # Random jitter range to avoid synchronized bursts
+backfill_on_startup_if_gap_hours = 24       # Trigger recovery backfill if gap > 24h
+
+[backfill]
+# Per spec.md US2: 90-day historical context on first deployment
+initial_days = 90                           # Days to backfill on first run (empty database)
+recovery_days = 14                          # Days to backfill after outage >24h
+
+[stitching]
+# Per spec.md US3: Continuous time series via stitching
+min_overlap_days = 1                        # Minimum overlap days for scaling factor calculation
+trim_percent = 20                           # Trim percentage for robust scaling (0-50)
+
+[resampling]
+# Per spec.md US4: Graceful degradation with weekly promotion
+min_run_for_weekly = 3                      # Promote to weekly when ≥3 consecutive missing days
+
+[archive]
+# Per spec.md US6: Monthly immutable archives
+output_dir = "./data/archive"               # Directory for CSV snapshots
+cadence = "monthly"                         # Archive frequency
+
+[health]
+# Per spec.md NFR: Health endpoint for container orchestration
+port = 8080                                 # HTTP port for /healthz endpoint
+db_probe_timeout_seconds = 3                # Timeout for database health check

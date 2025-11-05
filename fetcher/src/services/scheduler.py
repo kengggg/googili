@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from lib.db import DatabaseConnection
 from lib.db_operations import DBOperations
 from lib.timezone_utils import ICT
+from lib.config import FetcherConfig
 from services.ingestion import IngestionService
 from services.trends_fetcher import TrendsFetcher
 from lib.logging_utils import log_batch_event
@@ -72,8 +73,10 @@ class SchedulerService:
 
         # Initialize services
         self.db_ops = DBOperations(db)
+        # Load configuration for ingestion service
+        self.config = FetcherConfig()  # Loads from default config/googili.toml
         self.trends_fetcher = TrendsFetcher()
-        self.ingestion_service = IngestionService(db)
+        self.ingestion_service = IngestionService(db, self.config)
 
         # Initialize APScheduler (BlockingScheduler for daemon mode)
         self.scheduler = BlockingScheduler(timezone=ICT)

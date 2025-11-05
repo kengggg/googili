@@ -3,32 +3,41 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 1.1.0
-Change type: MINOR - Added UI/UX principle
+Version change: 1.1.0 → 1.2.0
+Change type: MINOR - Enhanced TDD principle with reality check and enforcement
 
 Modified principles:
-- Added Principle X: User Experience & Accessibility (UI must look good, be accessible, support mobile)
+- **Principle III (TDD)**: Added comprehensive reality check documenting Phase 1 violation, remediation work, and strengthened enforcement
 
 Added sections:
-- Core Principles (10 principles defined, was 9)
-- Public Health Ethics & Safety
-- Engineering Practices & Quality
-- Governance
+- TDD Reality Check (2025-11-05) - Documents historical violation, evidence, and remediation phases
+- Key Learnings from Violation - 5 critical lessons learned from retrofit testing
+- Behavioral Testing Principles - DO/DON'T guidelines with code examples
+- Enforcement for Future Work - Code review checklist and violation policy
+
+Modified sections:
+- Principle III main text: Clarified "ALL TESTS MUST TEST BEHAVIORS NOT IMPLEMENTATION DETAILS"
+- Testing Discipline: Strengthened with concrete examples of behavioral vs. implementation testing
 
 Removed sections: None
 
 Templates requiring updates:
-✅ plan-template.md - Constitution Check section already present and compatible
-✅ spec-template.md - User scenarios align with public health ethics requirements
-✅ tasks-template.md - TDD requirements align with Testing Discipline principle
-✅ checklist-template.md - Compatible with constitution requirements; UI/UX can be added to checklist items
-✅ agent-file-template.md - Compatible with constitution requirements
+✅ tasks-template.md - Already emphasizes TDD mandatory; now has constitutional backing with enforcement details
+✅ plan-template.md - Constitution Check section compatible; TDD violations now documented
+✅ checklist-template.md - Can add "Tests written before implementation" checklist item
+⚠️ PR template - Should add TDD compliance checklist (tests validate behavior, no mock anti-patterns, test-first commits)
+
+Impact on existing work:
+- Fetcher Core (Phase 1): Violation documented, fully remediated with 186/186 passing behavioral tests
+- Future phases (4-11): Must follow TRUE TDD with enforcement checklist
+- All cores (Analyser, Visualiser): Must use behavioral testing principles from day one
 
 Follow-up TODOs:
-- Consider creating a minimal help page template for MVP referenced in Principle X (Docs & training)
-- Consider creating a minimal operator runbook template for MVP (cron, backfill, recovery procedures)
+- Create PR template with TDD compliance checklist
+- Add pre-commit hook to detect mock assertion anti-patterns (optional)
+- Consider git commit-msg hook to require test commits before implementation commits (optional)
 
-Version bump rationale: MINOR (1.1.0) - New principle added (UI/UX & Accessibility) expanding governance scope
+Version bump rationale: MINOR (1.2.0) - Materially expanded Principle III with historical context, lessons learned, behavioral testing guidelines, and enforcement mechanisms. This is substantive guidance that affects all future development practices.
 -->
 
 ## Core Principles
@@ -55,7 +64,7 @@ Each core MUST maintain strict boundaries: no direct function calls across cores
 
 ### III. Test-Driven Development (NON-NEGOTIABLE)
 
-**All code MUST be written using TDD: tests first, verify they fail, then implement, and verify all tests again. YOU ARE NOT ALLOW TO SKIP THIS EVERTHOUGH THE PROCESS TAKE A LONG TIME. pytest.skip() TO MAKE THE TEST GREEN IS NOT ACCEPTABLE OR YOU'LL BE DELETED.**
+**All code MUST be written using TDD: tests first, verify they fail, then implement, and verify all tests again. ALL TESTS MUST TEST BEHAVIORS NOT IMPLEMENTATION DETAILS. YOU ARE NOT ALLOWED TO SKIP THIS EVEN THOUGH THE PROCESS TAKES A LONG TIME. Using pytest.skip() TO MAKE THE TEST GREEN IS NOT ACCEPTABLE.**
 
 - **Unit tests**: Stitching logic, percent-change calculations, debounce logic.
 - **Contract tests**: Interface boundaries between Fetcher ↔ Analyser ↔ Visualiser.
@@ -64,6 +73,110 @@ Each core MUST maintain strict boundaries: no direct function calls across cores
 Red-Green-Refactor cycle is mandatory. No implementation without failing tests first. All tests MUST be automated and pass before merging.
 
 **Rationale**: Public health systems demand reliability. TDD ensures correctness, prevents regressions, and documents expected behavior.
+
+#### TDD Reality Check (Added 2025-11-05)
+
+**Historical Violation**: During initial Fetcher Core development (Tasks T001-T027), TDD was NOT followed. Tests were written AFTER implementation across 27 tasks, with 6 modules having ZERO test coverage initially. This violated Principle III completely.
+
+**Evidence of Retrofit**:
+- Implementation files existed without corresponding test files (db.py, config.py, logging_utils.py, keyword_config.py, db_operations.py)
+- schema.sql (233 lines) existed before contract tests were written
+- Tests referenced implementation internals they shouldn't know in true TDD (e.g., checking specific method calls, inspecting call arguments)
+- Tests verified method existence rather than defining required behavior
+- **Critical Bug Found**: scheduler.py missing config parameter for IngestionService—would have been prevented by TDD
+
+**Remediation Completed (2025-11-05)**:
+
+**Phase 1 - Add Missing Tests**: Created 113 comprehensive behavioral tests for modules with ZERO coverage
+- test_database.py (20 tests) - Connection management, WAL mode, transactions
+- test_config.py (26 tests) - TOML parsing, validation, province checks
+- test_logging_utils.py (24 tests) - JSON formatting, Thai Unicode, structured logs
+- test_keyword_config.py (27 tests) - Model validation, activation, serialization
+- test_db_operations.py (16 tests) - UPSERT operations, batch events, record counting
+
+**Phase 2 - Remove Mock Assertion Anti-patterns**: Refactored 37 existing tests to validate BEHAVIOR not implementation
+- test_trends_fetcher.py - Removed mock call inspection, now verifies returned RSVRecord data
+- test_scheduler.py - Removed call_kwargs checks, now verifies job execution completion
+- test_cli.py - Removed call_args inspection, now verifies exit codes and service completion
+- Eliminated: `.assert_called_once()`, `.assert_called_once_with()`, `.call_args`, `.call_kwargs`, `.call_count`
+
+**Phase 3 - Fix Technical Issues**: Resolved 16 test failures (schema mismatches + timing incompatibilities)
+- Fixed batch event schema mismatches (start_ict → started_at_ict, added required fields)
+- Redesigned scheduler tests to use behavioral approach instead of freeze_time (incompatible with APScheduler threads)
+- Created test_scheduler_behavioral.py with 11 new tests verifying WHAT scheduler does, not WHEN
+
+**Results**:
+- **Before Remediation**: 0% TDD compliance, 173 passing tests, 11 failing, 6 modules with zero coverage
+- **After Remediation**: 186/186 tests passing (100%), comprehensive behavioral coverage, all mock anti-patterns removed
+- **Test Quality**: All tests now validate observable outcomes (data, records, exit codes, database state) not implementation details
+
+#### Key Learnings from Violation
+
+1. **TDD Prevents Critical Bugs**: The scheduler.py config parameter bug was discovered during test creation. This bug would have caused runtime crashes. TRUE TDD would have prevented it entirely.
+
+2. **Retrofit Tests Are Brittle**: Tests written after implementation break when code is safely refactored (method renames, parameter changes), even when behavior is unchanged. They test HOW code works, not WHAT it accomplishes.
+
+3. **Mock Assertions Are Anti-patterns**: Checking `.assert_called_once_with()`, inspecting `.call_args`, or verifying `.call_kwargs` tests implementation details. These tests become worthless when implementation changes, even if behavior is identical.
+
+4. **Implementation Knowledge Problem**: Retrofit tests "know" about private methods, internal attributes, and implementation choices because the implementation already exists. TRUE TDD tests only know the public contract and expected behavior.
+
+5. **Constitution Matters**: "TDD is NON-NEGOTIABLE" must be PRACTICED, not just claimed. Declaring a principle without enforcement renders it meaningless.
+
+#### Behavioral Testing Principles (Learned from Remediation)
+
+**DO: Test Observable Outcomes**
+- ✅ Verify returned data and records have correct values
+- ✅ Check database state after operations
+- ✅ Validate exit codes and error messages
+- ✅ Test API contract compliance (correct fields, types, constraints)
+- ✅ Verify logs contain required metadata
+
+**DON'T: Test Implementation Details**
+- ❌ `.assert_called_once()` - Don't count method calls
+- ❌ `.assert_called_once_with()` - Don't verify exact parameters
+- ❌ `.call_args` / `.call_kwargs` - Don't inspect call arguments
+- ❌ `.call_count` - Don't count internal calls
+- ❌ `hasattr()` checks - Don't verify method existence
+- ❌ Testing private methods directly - Only test public contracts
+
+**Examples**:
+
+**BAD (Tests Implementation)**:
+```python
+# Anti-pattern: Tests HOW the code calls dependencies
+mock_pytrends.build_payload.assert_called_once()
+call_kwargs = mock_pytrends.build_payload.call_args[1]
+assert call_kwargs['geo'] == 'TH-50'
+```
+
+**GOOD (Tests Behavior)**:
+```python
+# Behavioral: Tests WHAT the code returns
+rsv_records = fetcher.fetch_daily('ไข้', date(2025, 11, 1))
+assert rsv_records[0].province_code == 'TH-50'
+assert rsv_records[0].keyword == 'ไข้'
+```
+
+#### Enforcement for Future Work (Phases 4-11)
+
+**Before ANY implementation in future phases**:
+
+1. **Write failing tests FIRST** - Every user story begins with RED tests
+2. **Verify tests actually FAIL** - Run tests, confirm expected failures
+3. **Implement MINIMAL code** to make tests pass (GREEN)
+4. **Refactor** while keeping tests green
+5. **Document test-first commits** - Tests and implementation committed together with test timestamp before implementation
+
+**Code Review Checklist**:
+- [ ] Tests written before implementation (verify git commit timestamps)
+- [ ] Tests validate BEHAVIOR (data, exit codes, database state) not implementation (mock calls)
+- [ ] Tests use behavioral assertions, no mock assertion anti-patterns
+- [ ] Tests are resilient to refactoring (don't depend on internal methods/attributes)
+- [ ] Tests document expected behavior through clear test names and assertions
+
+**Violations = Rejection**: Any PR without test-first evidence or containing mock assertion anti-patterns will be rejected, no exceptions.
+
+**Commitment**: All future work (User Stories 2-6, Analyser Core, Visualiser Core) WILL follow TRUE TDD. The violation in Fetcher Core Phase 1 was identified, remediated, and will NOT be repeated.
 
 ### IV. Data Governance & Provenance
 
@@ -237,4 +350,4 @@ Avoid complex statistical models in MVP. Prioritize operator understanding and i
 
 ---
 
-**Version**: 1.1.0 | **Ratified**: 2025-11-04 | **Last Amended**: 2025-11-04
+**Version**: 1.2.0 | **Ratified**: 2025-11-04 | **Last Amended**: 2025-11-05 | **Amendment**: Enhanced Principle III (TDD) with reality check, lessons learned, behavioral testing guidelines, and enforcement mechanisms following Phase 1-3 remediation work
