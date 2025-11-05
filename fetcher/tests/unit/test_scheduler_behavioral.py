@@ -273,6 +273,82 @@ class TestSchedulerErrorHandling:
                    for call in error_calls), "Error log missing exception details"
 
 
+class TestSchedulerStartup:
+    """Test that scheduler startup (run() method) ACTUALLY works without crashing."""
+
+    @pytest.fixture
+    def test_db_instance(self):
+        """Create test database instance."""
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            db_path = tmp.name
+
+        db = DatabaseConnection(db_path)
+        with open('schema.sql', 'r') as f:
+            schema = f.read()
+        with db.get_connection() as conn:
+            conn.executescript(schema)
+
+        yield db
+
+        db.close()
+        Path(db_path).unlink()
+
+    @patch('services.scheduler.IngestionService')
+    def test_run_method_starts_without_attribute_error(self, mock_ingestion_class, test_db_instance):
+        """
+        SPEC: FR-001 - Daemon mode must start scheduler successfully
+        BEHAVIOR: run() method ACTUALLY starts without AttributeError on next_run_time
+
+        BUG FIX: This test addresses the production crash where accessing
+        job.next_run_time before scheduler.start() raises AttributeError in
+        APScheduler 3.10+.
+        """
+        import threading
+        import time
+
+        scheduler_service = SchedulerService(test_db_instance)
+
+        # Track if AttributeError occurred during startup
+        startup_error = None
+        scheduler_running = False
+
+        def run_scheduler():
+            nonlocal startup_error, scheduler_running
+            try:
+                # This should not raise AttributeError during startup logging
+                scheduler_service.run()
+            except AttributeError as e:
+                # This is the error we're testing for (should NOT happen)
+                startup_error = e
+            except Exception:
+                # Other exceptions are ok (scheduler may be shutdown externally, etc)
+                pass
+
+        # Run in background thread to avoid blocking
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
+
+        # Wait for scheduler to start (or fail with AttributeError)
+        time.sleep(0.5)
+
+        # Check if scheduler is running (means startup succeeded)
+        scheduler_running = scheduler_service.scheduler.running
+
+        # Shutdown scheduler cleanly
+        try:
+            scheduler_service.scheduler.shutdown(wait=False)
+        except:
+            pass
+
+        # Verify: No AttributeError during startup
+        assert startup_error is None, \
+            f"Scheduler startup failed with AttributeError: {startup_error}"
+
+        # Verify: Scheduler reached running state
+        assert scheduler_running, "Scheduler did not reach running state (startup may have failed)"
+
+
 class TestSchedulerLifecycle:
     """Test that scheduler lifecycle management ACTUALLY works."""
 

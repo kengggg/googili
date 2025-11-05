@@ -206,9 +206,17 @@ class SchedulerService:
         # Add daily job
         self.add_daily_job()
 
-        # Print next run time
-        next_run = self.scheduler.get_jobs()[0].next_run_time
-        logger.info(f"Next scheduled run: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        # Calculate next run time from trigger before scheduler starts
+        # (next_run_time attribute not available until after start() in APScheduler 3.10+)
+        job = self.scheduler.get_jobs()[0]
+        from datetime import datetime
+        now = datetime.now(ICT)
+        next_run = job.trigger.get_next_fire_time(None, now)
+
+        if next_run:
+            logger.info(f"Next scheduled run: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        else:
+            logger.warning("Could not calculate next run time - job may be paused or misconfigured")
 
         # Start scheduler (blocking)
         try:
