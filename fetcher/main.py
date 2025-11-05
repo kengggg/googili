@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from lib.db import init_database, DatabaseConnection
 from lib.db_operations import DBOperations
 from lib.logging_utils import setup_logging
+from lib.config import FetcherConfig
 from services.ingestion import IngestionService
 from services.scheduler import SchedulerService
 from lib.timezone_utils import now_ict
@@ -175,8 +176,11 @@ def run_daily(db_path: str, schema_path: str):
         # Initialize database
         db = init_database(schema_path, db_path)
 
+        # Load configuration
+        config = FetcherConfig()
+
         # Run ingestion
-        ingestion_service = IngestionService(db)
+        ingestion_service = IngestionService(db, config)
         batch_event = ingestion_service.ingest_daily(batch_type='daily')
 
         # Log results
@@ -220,8 +224,11 @@ def run_manual(db_path: str, schema_path: str, target_date_str: str):
         # Initialize database
         db = init_database(schema_path, db_path)
 
+        # Load configuration
+        config = FetcherConfig()
+
         # Run ingestion
-        ingestion_service = IngestionService(db)
+        ingestion_service = IngestionService(db, config)
         batch_event = ingestion_service.ingest_daily(target_date=target_date, batch_type='manual')
 
         # Log results
@@ -316,8 +323,11 @@ def run_backfill_initial(db_path: str, schema_path: str):
                 logger.info("Backfill cancelled")
                 return 0
 
+        # Load configuration
+        config = FetcherConfig()
+
         # Run backfill
-        ingestion_service = IngestionService(db)
+        ingestion_service = IngestionService(db, config)
         batch_event = ingestion_service.ingest_initial_backfill()
 
         # Log results

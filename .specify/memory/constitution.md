@@ -138,6 +138,33 @@ Red-Green-Refactor cycle is mandatory. No implementation without failing tests f
 - ❌ `.call_count` - Don't count internal calls
 - ❌ `hasattr()` checks - Don't verify method existence
 - ❌ Testing private methods directly - Only test public contracts
+- ❌ **Over-mocking** - Don't mock your own classes completely (use `@patch('main.MyClass')`)
+
+**CRITICAL: The Over-Mocking Problem**
+
+Mocking entire classes hides signature mismatches and parameter errors:
+
+```python
+# ❌ BAD: Complete mock hides signature errors
+@patch('main.IngestionService')  # Mock accepts ANY arguments
+def test_cli(mock_ingestion_class):
+    mock_ingestion_class.return_value = Mock()
+    # This passes even if real signature is wrong!
+    IngestionService(db)  # Missing required 'config' parameter
+```
+
+**Result**: Tests pass, production crashes with `TypeError: missing required positional argument`
+
+**Solution**: Use integration tests without mocking your own code:
+
+```python
+# ✅ GOOD: Integration test catches signature errors
+def test_cli_integration():
+    # Don't mock your own classes - test them!
+    db = DatabaseConnection(':memory:')
+    config = FetcherConfig()  # Forces correct signature
+    ingestion = IngestionService(db, config)  # Would fail if signature wrong
+```
 
 **Examples**:
 
@@ -173,10 +200,39 @@ assert rsv_records[0].keyword == 'ไข้'
 - [ ] Tests use behavioral assertions, no mock assertion anti-patterns
 - [ ] Tests are resilient to refactoring (don't depend on internal methods/attributes)
 - [ ] Tests document expected behavior through clear test names and assertions
+- [ ] **Integration tests exist** for entry points (CLI, APIs) - NO mocking of your own classes
+- [ ] **Critical paths tested end-to-end** - At least one integration test per user-facing feature
 
 **Violations = Rejection**: Any PR without test-first evidence or containing mock assertion anti-patterns will be rejected, no exceptions.
 
 **Commitment**: All future work (User Stories 2-6, Analyser Core, Visualiser Core) WILL follow TRUE TDD. The violation in Fetcher Core Phase 1 was identified, remediated, and will NOT be repeated.
+
+#### Case Study: The Over-Mocking Bug (2025-11-05)
+
+**Discovery**: After Phase 1-3 remediation achieving "186/186 tests passing (100%)", production CLI was found to be completely broken.
+
+**Bug**: `main.py` called `IngestionService(db)` but signature requires `IngestionService(db, config)`
+**Impact**: ALL CLI modes (--daily, --manual, --daemon, --backfill-initial) crash immediately with `TypeError`
+**Tests**: ALL 12 CLI tests passed despite critical production bug
+**Root Cause**: `@patch('main.IngestionService')` created mock accepting ANY arguments, hiding signature mismatch
+
+**Why Tests Didn't Catch It**:
+```python
+@patch('main.IngestionService')  # Complete mock of our own class
+def test_manual_ingestion(mock_ingestion_class):
+    mock_ingestion_class.return_value = Mock()
+    # This passes even though signature is wrong!
+    run_manual('test.db', 'schema.sql', '2025-11-01')
+```
+
+**Lesson**: Over-mocking makes tests worthless. Mocks should be for **external dependencies** (Google Trends API), NOT for your own code (IngestionService).
+
+**Fix Applied** (following TRUE TDD):
+1. **RED**: Wrote failing integration test without mocking IngestionService
+2. **GREEN**: Fixed `main.py` to pass `config` parameter
+3. **VERIFY**: Integration test passes, production CLI works
+
+**Prevention**: All entry points (CLI, APIs) MUST have at least one integration test with minimal mocking.
 
 ### IV. Data Governance & Provenance
 

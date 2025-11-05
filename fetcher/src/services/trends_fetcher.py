@@ -19,8 +19,10 @@ from datetime import date, timedelta
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from pytrends.request import TrendReq
+from pytrends.exceptions import TooManyRequestsError
 
-from lib.exceptions import PyTrendsException
+from lib.exceptions import PyTrendsException, RateLimitException
+from lib.config import FetcherConfig
 from models.rsv_record import RSVRecord
 
 logger = logging.getLogger(__name__)
@@ -42,7 +44,8 @@ class TrendsFetcher:
         province: str = 'TH-50',
         jitter_range: tuple = (3, 5),
         hl: str = 'th',
-        tz: int = 420  # UTC+7 for Asia/Bangkok
+        tz: int = 420,  # UTC+7 for Asia/Bangkok
+        config: Optional[FetcherConfig] = None
     ):
         """
         Initialize TrendsFetcher.
@@ -52,6 +55,7 @@ class TrendsFetcher:
             jitter_range: Min/max seconds for rate limiting jitter (default: 3-5)
             hl: Language code for Google Trends (default: 'th' for Thai)
             tz: Timezone offset in minutes (default: 420 for UTC+7)
+            config: Optional FetcherConfig for retry configuration
 
         Raises:
             ValueError: If province is not TH-50 (MVP constraint)
@@ -67,12 +71,18 @@ class TrendsFetcher:
         self.hl = hl
         self.tz = tz
 
+        # Load retry configuration
+        if config is None:
+            config = FetcherConfig()
+        self.config = config
+
         # Initialize pytrends (will be refreshed for each request batch)
         self._pytrends = None
 
         logger.info(
             f"TrendsFetcher initialized: province={province}, "
-            f"jitter={jitter_range[0]}-{jitter_range[1]}s"
+            f"jitter={jitter_range[0]}-{jitter_range[1]}s, "
+            f"max_retries={self.config.max_retries}"
         )
 
     def _get_pytrends(self) -> TrendReq:
@@ -104,6 +114,94 @@ class TrendsFetcher:
             Timeframe string (e.g., "2025-11-01 2025-11-05")
         """
         return f"{start_date.isoformat()} {end_date.isoformat()}"
+
+    def _calculate_backoff(self, attempt: int, retry_after: Optional[int] = None) -> float:
+        """
+        Calculate backoff time for retry with exponential backoff and jitter.
+
+        Args:
+            attempt: Retry attempt number (0-indexed)
+            retry_after: Optional Retry-After header value in seconds
+
+        Returns:
+            Backoff time in seconds with jitter applied
+        """
+        # If Retry-After header present and config allows, use it
+        if retry_after is not None and self.config.respect_retry_after:
+            base_backoff = retry_after
+        else:
+            # Exponential backoff: base * (multiplier ** attempt)
+            base_backoff = self.config.backoff_base_seconds * (
+                self.config.backoff_multiplier ** attempt
+            )
+            # Cap at max_backoff_seconds
+            base_backoff = min(base_backoff, self.config.max_backoff_seconds)
+
+        # Add ±20% jitter
+        jitter_factor = random.uniform(0.8, 1.2)
+        backoff_with_jitter = base_backoff * jitter_factor
+
+        return backoff_with_jitter
+
+    def _fetch_with_retry(self, pytrends: TrendReq) -> pd.DataFrame:
+        """
+        Fetch data from pytrends with exponential backoff retry on 429 errors.
+
+        Args:
+            pytrends: Configured TrendReq instance (build_payload already called)
+
+        Returns:
+            DataFrame with interest over time data
+
+        Raises:
+            RateLimitException: If max retries exhausted
+            PyTrendsException: For other pytrends errors
+        """
+        attempt = 0
+        max_attempts = self.config.max_retries + 1  # initial + retries
+
+        while attempt < max_attempts:
+            try:
+                df = pytrends.interest_over_time()
+                return df
+
+            except TooManyRequestsError as e:
+                attempt += 1
+
+                if attempt >= max_attempts:
+                    # Exhausted all retries
+                    logger.error(f"Rate limited after {self.config.max_retries} retries")
+                    raise RateLimitException(
+                        f"Rate limited after {self.config.max_retries} retries"
+                    ) from e
+
+                # Extract Retry-After header if present
+                retry_after = None
+                if hasattr(e, 'response') and e.response is not None:
+                    retry_after_header = e.response.headers.get('Retry-After')
+                    if retry_after_header:
+                        try:
+                            retry_after = int(retry_after_header)
+                        except ValueError:
+                            pass  # Ignore invalid Retry-After values
+
+                # Calculate backoff
+                backoff_time = self._calculate_backoff(attempt - 1, retry_after)
+
+                logger.warning(
+                    f"HTTP 429 rate limit hit (attempt {attempt}/{max_attempts}). "
+                    f"Retrying after {backoff_time:.1f}s backoff"
+                )
+
+                # Sleep with backoff
+                time.sleep(backoff_time)
+
+            except Exception as e:
+                # Non-429 errors - don't retry
+                raise PyTrendsException(f"pytrends API call failed: {e}") from e
+
+        # Should never reach here
+        raise RateLimitException(f"Rate limited after {self.config.max_retries} retries")
 
     def fetch_daily_rsv(
         self,
@@ -148,8 +246,8 @@ class TrendsFetcher:
                 geo=self.province
             )
 
-            # Fetch data
-            df = pytrends.interest_over_time()
+            # Fetch data with retry on 429
+            df = self._fetch_with_retry(pytrends)
 
             if df is None or df.empty:
                 logger.warning(f"No data returned from pytrends for keywords={keywords}")
@@ -188,6 +286,9 @@ class TrendsFetcher:
 
             logger.info(f"Fetched {len(records)} daily RSV records")
 
+        except (RateLimitException, PyTrendsException):
+            # Re-raise rate limit and pytrends exceptions as-is
+            raise
         except Exception as e:
             logger.error(f"Failed to fetch daily RSV: {e}", exc_info=True)
             raise PyTrendsException(f"pytrends API call failed: {e}") from e
@@ -241,7 +342,8 @@ class TrendsFetcher:
                 geo=self.province
             )
 
-            df = pytrends.interest_over_time()
+            # Fetch data with retry on 429
+            df = self._fetch_with_retry(pytrends)
 
             if df is None or df.empty:
                 logger.warning(f"No weekly data returned from pytrends for keywords={keywords}")
@@ -281,6 +383,9 @@ class TrendsFetcher:
 
             logger.info(f"Fetched {len(records)} weekly RSV records")
 
+        except (RateLimitException, PyTrendsException):
+            # Re-raise rate limit and pytrends exceptions as-is
+            raise
         except Exception as e:
             logger.error(f"Failed to fetch weekly RSV: {e}", exc_info=True)
             raise PyTrendsException(f"pytrends API call failed: {e}") from e

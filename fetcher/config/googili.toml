@@ -52,3 +52,11 @@ cadence = "monthly"                         # Archive frequency
 # Per spec.md NFR: Health endpoint for container orchestration
 port = 8080                                 # HTTP port for /healthz endpoint
 db_probe_timeout_seconds = 3                # Timeout for database health check
+
+[rate_limiting]
+# Per spec.md FR-016: HTTP 429 rate limiting handling with exponential backoff
+max_retries = 3                             # Maximum retry attempts for 429 errors
+backoff_base_seconds = 60                   # Base backoff time (first retry: 60s, second: 300s, third: 1500s)
+backoff_multiplier = 5.0                    # Exponential backoff multiplier
+max_backoff_seconds = 1800                  # Maximum backoff time cap (30 minutes)
+respect_retry_after = true                  # Use Retry-After header from API if present

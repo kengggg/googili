@@ -183,7 +183,7 @@ fetcher/
 - Most mature Python library for Google Trends access
 - Supports daily and weekly granularity requests
 - Active maintenance, community support
-- Handles rate limiting and retry logic
+- **NOTE**: pytrends does NOT automatically retry on HTTP 429 errors - we must implement this
 
 **Alternatives Considered**:
 - Official Google Trends API (does not exist for RSV data)
@@ -191,9 +191,14 @@ fetcher/
 - SerpAPI (paid service, unnecessary for MVP)
 
 **Implementation Notes**:
-- Wrap pytrends calls in `TrendsFetcher` service with exponential backoff
-- Rate-limit aware: 3-5 second jitter between keyword requests
-- Log all API errors for operator troubleshooting
+- Wrap pytrends calls in `TrendsFetcher` service with exponential backoff retry for HTTP 429 errors
+- **Preventive jitter**: 3-5 second jitter between keyword requests (prevents hitting rate limits)
+- **Reactive retry**: Exponential backoff on 429 errors (1min, 5min, 15min) with recovery jitter
+- **Exception hierarchy**: RateLimitException (retriable) distinct from PyTrendsException (other errors)
+- **Configuration**: Retry behavior configurable in googili.toml (max_retries, backoff_base, backoff_multiplier, max_backoff, respect_retry_after)
+- **Batch event handling**: Mark batches as "degraded" (not "fail") when rate limited to distinguish retriable from permanent errors
+- **Backfill resilience**: Initial 90-day backfill implements per-date retry to ensure historical data completeness even with intermittent 429 errors
+- Log all API errors for operator troubleshooting with 429 errors logged distinctly with structured metadata
 
 ### 2. Time-Series Stitching: Overlap-Based Scaling
 

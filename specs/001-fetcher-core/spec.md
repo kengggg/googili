@@ -166,6 +166,8 @@ Program stewards and researchers need complete provenance metadata (batch IDs, f
 
 - **FR-015**: System MUST enforce zero values remain zero (no manufactured signal) unless a subsequent re-fetch with daily granularity yields non-zero values.
 
+- **FR-016**: System MUST handle HTTP 429 rate limiting errors from Google Trends API with exponential backoff retry strategy (3 attempts with backoff: 1 minute, 5 minutes, 15 minutes), mark batch events as "degraded" (not "fail") when rate limited, implement per-date retry for initial backfill to ensure 90-day data completeness, and log 429 errors distinctly with structured metadata for operational monitoring.
+
 ### Key Entities
 
 - **RSV Record**: Represents a single (keyword, date) observation with raw RSV value (0–100), stitched RSV value, source window used, fetch timestamp (Asia/Bangkok), batch ID, granularity flag, impute method, and quality flag.

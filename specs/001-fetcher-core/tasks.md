@@ -270,6 +270,25 @@ Per plan.md, single backend service structure:
 - [ ] T099 Performance testing (verify 90-day backfill <15 min for 10 keywords per SC-003, daily fetch <60s per performance goals)
 - [ ] T100 Security review (verify no credentials logged, TOML config validation, SQL injection prevention via parameterized queries)
 
+### HTTP 429 Rate Limiting Handling (FR-016)
+
+**Context**: Google Trends API returns HTTP 429 when rate limited. Current implementation treats this as fatal error, causing permanent data gaps. Must implement retry with exponential backoff per FR-016.
+
+**TDD Order**: Following TRUE TDD - tests BEFORE implementation
+
+- [X] T101 [RED] [US1] Write FAILING tests for RateLimitException class (tests/unit/test_rate_limit_exception.py) - verify inheritance from PyTrendsException, retry_after attribute storage, serialization for logging
+- [X] T102 [GREEN] [US1] Implement RateLimitException in lib/exceptions.py (minimal code to pass T101 tests)
+- [X] T103 [RED] [US1] Write FAILING tests for retry configuration parsing (tests/unit/test_config_rate_limiting.py) - verify default values, TOML parsing, validation
+- [X] T104 [GREEN] [US1] Add rate_limiting section to config/googili.toml with defaults (max_retries=3, backoff_base_seconds=60, backoff_multiplier=5.0, max_backoff_seconds=1800, respect_retry_after=true)
+- [X] T105 [GREEN] [US1] Update lib/config.py FetcherConfig to parse rate_limiting configuration with validation
+- [ ] T106 [RED] [US1] Write FAILING tests for exponential backoff retry logic (tests/unit/test_trends_fetcher_retry.py) - verify retry on 429, backoff calculation, Retry-After header respect, RateLimitException after max retries, jitter randomization
+- [ ] T107 [GREEN] [US1] Implement exponential backoff retry in services/trends_fetcher.py fetch_daily_rsv() and fetch_weekly_rsv() methods - wrap pytrends calls in retry loop, catch TooManyRequestsError, calculate backoff with jitter, log retry attempts
+- [ ] T108 [RED] [US1] Write FAILING tests for ingestion RateLimitException handling (tests/unit/test_ingestion_rate_limiting.py) - verify batch marked "degraded" not "fail" on RateLimitException, other PyTrendsException still fail
+- [ ] T109 [GREEN] [US1] Update services/ingestion.py ingest_daily() to catch RateLimitException separately, mark batch degraded with notes, don't re-raise (allow graceful degradation)
+- [ ] T110 [RED] [US2] Write FAILING integration tests for backfill per-date retry (tests/integration/test_cli_backfill_retry.py) - verify failed dates retried after cooldown, batch continues after 429 (not aborted), exit code based on final success
+- [ ] T111 [GREEN] [US2] Rewrite main.py run_backfill_initial() to implement per-date retry loop - collect failed dates, retry after cooldown, provide detailed progress logging
+- [ ] T112 [GREEN] [US1] Add 429 guidance to main.py run_manual() - catch RateLimitException, display helpful retry command with suggested wait time
+
 ---
 
 ## Dependencies & Execution Order
