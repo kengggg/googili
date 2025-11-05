@@ -21,7 +21,7 @@ from typing import List, Optional, Dict, Any
 from lib.db import DatabaseConnection
 from lib.db_operations import DBOperations
 from lib.config import FetcherConfig
-from lib.logger import log_batch_event
+from lib.logging_utils import log_batch_event
 from lib.exceptions import PyTrendsException, DatabaseException, ValidationException
 from models.batch_event import BatchEvent
 from models.rsv_record import RSVRecord

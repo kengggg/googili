@@ -6,8 +6,10 @@ Business logic services for RSV ingestion, stitching, scheduling, and health mon
 
 from .trends_fetcher import TrendsFetcher
 from .ingestion import IngestionService
+from .scheduler import SchedulerService
 
 __all__ = [
     'TrendsFetcher',
     'IngestionService',
+    'SchedulerService',
 ]

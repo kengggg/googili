@@ -12,9 +12,8 @@ Constitution alignment:
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from typing import Optional, Dict, Any
-from zoneinfo import ZoneInfo
 
-ICT = ZoneInfo("Asia/Bangkok")
+from lib.timezone_utils import ICT
 
 
 @dataclass

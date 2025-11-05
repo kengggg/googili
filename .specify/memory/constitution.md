@@ -49,13 +49,13 @@ Google Trends RSV (Relative Search Volume, 0–100) is media-sensitive and repre
 - **Analyser**: Reads raw data; computes derived analytics (baseline, %Δ, alerts); writes results and analysis completion events.
 - **Visualiser**: Read-only access to raw and derived data; presents dashboards, charts, and data-health widgets.
 
-Each core MUST maintain strict boundaries: no direct function calls across cores; communication via database events and well-defined table contracts. Each core can be run independently without waiting for the other core. Breaking changes to shared schemas require explicit migration plans.
+Each core MUST maintain strict boundaries: no direct function calls across cores; communication via database events and well-defined table contracts. NO GLOBAL VARIABLES AT ALL. Each core can be run independently without waiting for the other core. Breaking changes to shared schemas require explicit migration plans.
 
 **Rationale**: Enables independent development, testing, and troubleshooting. Supports fail-safe operation where Visualiser remains usable with last good data when upstream fails.
 
 ### III. Test-Driven Development (NON-NEGOTIABLE)
 
-**All code MUST be written using TDD: tests first, verify they fail, then implement, and verify all tests again.**
+**All code MUST be written using TDD: tests first, verify they fail, then implement, and verify all tests again. YOU ARE NOT ALLOW TO SKIP THIS EVERTHOUGH THE PROCESS TAKE A LONG TIME. pytest.skip() TO MAKE THE TEST GREEN IS NOT ACCEPTABLE OR YOU'LL BE DELETED.**
 
 - **Unit tests**: Stitching logic, percent-change calculations, debounce logic.
 - **Contract tests**: Interface boundaries between Fetcher ↔ Analyser ↔ Visualiser.

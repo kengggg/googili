@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_rsv_fetched ON raw_trenddata(fetched_at_ict DESC)
 -- ========================================
 
 CREATE TABLE IF NOT EXISTS events_raw_rsv_ingested (
-    batch_id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL PRIMARY KEY,
     batch_type TEXT NOT NULL CHECK(batch_type IN ('daily', 'initial_backfill', 'recovery_backfill', 'manual')),
     requested_keywords TEXT NOT NULL,  -- JSON array: ["ไข้", "ไอ", ...]
     requested_window TEXT NOT NULL,    -- "2025-11-03 to 2025-11-04"
@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS config_keywords (
     active BOOLEAN NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL,
     province_code TEXT NOT NULL DEFAULT 'TH-50',
+    notes TEXT,  -- Optional notes about keyword (e.g., synonym info, deprecation reason)
 
     CHECK(province_code = 'TH-50')  -- MVP: Chiang Mai only
 );
@@ -106,9 +107,9 @@ SELECT
     status,
     finished_at_ict AS last_fetch,
     rows_written,
-    true_daily_count,
-    weekly_flat_count,
-    missing_count,
+    quality_true_daily AS true_daily_count,
+    quality_weekly_flat AS weekly_flat_count,
+    rows_missing AS missing_count,
     notes
 FROM events_raw_rsv_ingested
 WHERE finished_at_ict IS NOT NULL
