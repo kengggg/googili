@@ -7,10 +7,12 @@
 
 **Organization**: Tasks grouped by user story to enable independent implementation and testing.
 
+**Status**: Simplified per GitHub issue #4 - removed backfill, gap recovery, resampling; kept stitching for 'today 1-m' daily ingestion.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (US1, US2, US3, US4, US5, US6)
+- **[Story]**: Which user story this task belongs to (US1, US3, US6)
 - Include exact file paths in descriptions
 
 ## Path Conventions
@@ -28,7 +30,7 @@ Per plan.md, single backend service structure:
 **Purpose**: Project initialization and basic directory structure per plan.md
 
 - [X] T001 Create project directory structure (fetcher/src/{models,services,cli,lib}, fetcher/tests/{unit,integration,contract,golden}, fetcher/config)
-- [X] T002 Initialize Python 3.11 project with requirements.txt (pytrends, APScheduler, Flask, pytest, python-json-logger, scipy)
+- [X] T002 Initialize Python 3.12 project with requirements.txt (pytrends, pytest, python-json-logger, scipy)
 - [X] T003 [P] Create .gitignore for Python project (venv/, __pycache__/, *.pyc, data/, *.db)
 - [X] T004 [P] Create fetcher/README.md with quick start instructions
 - [X] T005 [P] Create fetcher/src/__init__.py as package marker
@@ -45,7 +47,7 @@ Per plan.md, single backend service structure:
 - [X] T007 [P] Implement TOML configuration loader in fetcher/src/lib/config.py (loads googili.toml, validates structure)
 - [X] T008 [P] Implement structured JSON logger in fetcher/src/lib/logger.py (python-json-logger, batch metadata support)
 - [X] T009 Apply database schema from contracts/database-schema.sql (create tables, indexes, views, triggers)
-- [X] T010 [P] Create example configuration file fetcher/config/googili.toml.example (10 Thai keywords, Chiang Mai TH-50, schedule settings)
+- [X] T010 [P] Create example configuration file fetcher/config/googili.toml.example (10 Thai keywords, Thailand TH, schedule settings)
 - [X] T011 [P] Implement timezone utilities in fetcher/src/lib/timezone_utils.py (Asia/Bangkok handling, ICT timestamp creation)
 - [X] T012 Create base exception classes in fetcher/src/lib/exceptions.py (FetcherException, DatabaseException, ConfigException, PyTrendsException)
 
@@ -53,11 +55,13 @@ Per plan.md, single backend service structure:
 
 ---
 
-## Phase 3: User Story 1 - Daily RSV Data Availability (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Daily RSV Data with 'today 1-m' Ingestion (Priority: P1) 🎯 MVP
 
-**Goal**: Reliable daily ingestion of Google Trends RSV for 10 Thai keywords with scheduled execution at 07:30 ICT
+**Goal**: Reliable daily ingestion of Google Trends RSV for 10 Thai keywords using 'today 1-m' timeframe (~30 days per fetch), one keyword per request
 
 **Independent Test**: Run daily ingestion, verify RSV data appears in database for all keywords with batch event metadata within 10 minutes
+
+**Current Status**: ✅ IMPLEMENTED (simplified per GitHub issue #4) - uses `ingest()` method with 'today 1-m' timeframe, one keyword per request
 
 ### Tests for User Story 1 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
@@ -69,65 +73,54 @@ Per plan.md, single backend service structure:
 
 ### Implementation for User Story 1
 
-- [X] T018 [P] [US1] Create RSV Record model in fetcher/src/models/rsv_record.py (keyword, date, rsv_raw, batch_id, granularity, quality attributes per data-model.md)
+- [X] T018 [P] [US1] Create RSV Record model in fetcher/src/models/rsv_record.py (keyword, date, rsv_raw, rsv_stitched, batch_id, granularity, quality attributes per data-model.md)
 - [X] T019 [P] [US1] Create Batch Event model in fetcher/src/models/batch_event.py (batch_id, status, counts, timestamps, notes per data-model.md)
 - [X] T020 [P] [US1] Create Keyword Configuration model in fetcher/src/models/keyword_config.py (term, active, province_code per data-model.md)
-- [X] T021 [US1] Implement TrendsFetcher service in fetcher/src/services/trends_fetcher.py (pytrends wrapper, daily/weekly granularity, TH-50 scoping, rate limiting with 3-5s jitter per research.md)
+- [X] T021 [US1] Implement TrendsFetcher service in fetcher/src/services/trends_fetcher.py (pytrends wrapper, 'today 1-m' timeframe, TH scoping, rate limiting with 3-5s jitter per research.md)
 - [X] T022 [US1] Implement database persistence layer in fetcher/src/lib/db_operations.py (UPSERT for RSV records, INSERT for batch events, idempotence enforcement)
-- [X] T023 [US1] Implement Ingestion service in fetcher/src/services/ingestion.py (orchestrates fetch → persist → batch event emission, error handling)
-- [X] T024 [US1] Implement APScheduler configuration in fetcher/src/services/scheduler.py (07:30 ICT schedule, ±2 min jitter, graceful shutdown)
-- [X] T025 [US1] Create CLI entry point in fetcher/main.py (supports --daily, --daemon, --manual, --backfill-initial modes)
-- [X] T026 [US1] Add batch event logging to Ingestion service (structured JSON logs with batch_id, keywords, row counts per Constitution Principle VIII)
-- [X] T027 [US1] Implement on-demand manual ingestion trigger in CLI (--manual flag, creates batch event marked "manual trigger")
+- [X] T023 [US1] Implement Ingestion service in fetcher/src/services/ingestion.py (orchestrates fetch → [future: stitch] → persist → batch event emission, one keyword per request, error handling)
+- [X] T024 [US1] Create simplified CLI entry point in fetcher/main.py (single command: `python main.py` runs ingestion, no daemon/scheduler modes)
+- [X] T025 [US1] Add batch event logging to Ingestion service (structured JSON logs with batch_id, keywords, row counts per Constitution Principle VIII)
 
-**Checkpoint**: Daily ingestion functional - can schedule or manually trigger fetches, data persisted with batch events
+**Checkpoint**: Daily ingestion functional - can manually trigger fetches using 'today 1-m' timeframe, data persisted with batch events
 
 ---
 
-## Phase 4: User Story 2 - Historical Context via 90-Day Backfill (Priority: P1) 🎯 MVP
+## Phase 4: User Story 2 - Historical Context via 90-Day Backfill (Priority: P1) ❌ REMOVED
 
-**Goal**: Automatic 90-day historical backfill on first deployment to initialize time series
+**Status**: ❌ **REMOVED per GitHub issue #4** - 'today 1-m' ingestion provides ~30 days rolling history, sufficient for operational surveillance
 
-**Independent Test**: Start with empty database, verify system triggers 90-day backfill automatically, creates continuous time series for all keywords
+**Rationale**: The simplified approach uses 'today 1-m' timeframe which inherently provides recent history. 90-day backfill complexity was deemed unnecessary for MVP.
 
-### Tests for User Story 2 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
-
-- [X] T028 [P] [US2] Unit test for backfill window calculation in fetcher/tests/unit/test_backfill_windowing.py (90-day range, date arithmetic in Asia/Bangkok timezone)
-- [X] T029 [P] [US2] Behavioral tests for ingestion service in fetcher/tests/unit/test_ingestion_behavior.py (empty DB triggers backfill, populated DB runs daily, no duplicates, recovery scenarios - tests WHAT users see, not HOW code works)
-- [X] T030 [US2] Integration test for 90-day backfill in fetcher/tests/integration/test_initial_backfill.py (clean DB → backfill → verify 90 days × 10 keywords = 900 records)
-
-### Implementation for User Story 2
-
-- [X] T031 [US2] Implement backfill window calculator in fetcher/src/services/backfill.py (computes 90-day date range, handles partial availability per spec edge case)
-- [X] T032 [US2] Implement database state detector in fetcher/src/lib/db_state.py (checks if raw_trenddata empty, determines first-run vs. recovery)
-- [X] T033 [US2] Add first-run backfill logic to Ingestion service (detects empty DB on startup, triggers 90-day backfill, marks batch event "initial backfill")
-- [X] T034 [US2] Add CLI backfill command in fetcher/main.py (--backfill --days=90, supports manual backfill invocation)
-- [X] T035 [US2] Implement batch chunking for backfill in BackfillService (avoid single massive request, chunk into weekly requests per pytrends best practices)
-- [X] T036 [US2] Add backfill progress logging (log each chunk completion, total rows written, estimated time remaining)
-
-**Checkpoint**: 90-day backfill works - empty database initializes with historical data automatically
+**Obsolete Tasks** (T028-T036):
+- ~~T028-T030: Backfill tests~~
+- ~~T031-T036: Backfill implementation~~
 
 ---
 
-## Phase 5: User Story 3 - Continuous Time Series via Stitching (Priority: P1) 🎯 MVP
+## Phase 5: User Story 3 - Continuous Time Series via Stitching (Priority: P1) 🎯 MVP - CURRENT WORK
 
 **Goal**: Overlap-based stitching using trimmed mean to produce stable, continuous daily time series without normalization jumps
 
+**Why Essential**: Daily 'today 1-m' fetches return INDEPENDENT 0-100 scales. Each fetch (~30 days) overlaps with previous fetch by ~29 days. Without stitching, this creates artificial level jumps. Stitching normalizes consecutive windows into a continuous time series.
+
 **Independent Test**: Run multiple daily ingestions with overlapping windows, verify stitched RSV values show <20% jumps on stable days (SC-004)
+
+**Current Status**: 🔄 **PLANNED** - Database schema ready (rsv_stitched column exists), configuration ready ([stitching] section exists), needs StitcherService implementation
 
 ### Tests for User Story 3 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
 - [ ] T037 [P] [US3] Unit test for trimmed mean calculation in fetcher/tests/unit/test_stitcher.py (test 20% trim, outlier down-weighting, zero preservation per research.md Decision 2)
-- [ ] T038 [P] [US3] Unit test for overlap window extraction in fetcher/tests/unit/test_windowing.py (find overlap region between consecutive fetches, min 1-day validation)
+- [ ] T038 [P] [US3] Unit test for overlap window extraction in fetcher/tests/unit/test_stitcher.py (find overlap region between consecutive fetches, min 1-day validation)
 - [ ] T039 [P] [US3] Golden-file test for stitching scenarios in fetcher/tests/golden/test_stitching_scenarios.py (load known overlap fixtures, verify <20% jumps, test edge cases: all-zeros, no overlap, outlier spikes)
-- [ ] T040 [US3] Unit test for stitching factor storage in fetcher/tests/unit/test_stitcher.py (verify scaling factor logged in batch event notes for audit)
+- [ ] T040 [P] [US3] Unit test for stitching factor storage in fetcher/tests/unit/test_stitcher.py (verify scaling factor logged in batch event notes for audit)
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] Implement overlap window calculator in fetcher/src/services/stitcher.py (identifies date range overlap between old and new windows)
-- [ ] T042 [US3] Implement trimmed mean scaling factor calculation in Stitcher service (scipy.stats.trim_mean with 20% proportiontocut per research.md)
-- [ ] T043 [US3] Implement RSV stitching application in Stitcher service (applies scaling factor, updates rsv_stitched column, handles zero-division edge case)
-- [ ] T044 [US3] Integrate stitching into Ingestion service (fetch → detect overlap → compute factor → apply stitching → persist)
+- [ ] T041 [US3] Implement StitcherService class in fetcher/src/services/stitcher.py with find_overlap() method (queries database for existing records in overlap region for given keyword)
+- [ ] T042 [US3] Implement compute_scaling_factor() method in StitcherService (scipy.stats.trim_mean with 20% proportiontocut per research.md, handles zero-division edge case)
+- [ ] T043 [US3] Implement apply_stitching() method in StitcherService (applies scaling factor to new records, updates rsv_stitched attribute)
+- [ ] T044 [US3] Integrate stitching into IngestionService.ingest() (after fetch, before persist: detect overlap → compute factor → apply stitching → update batch notes)
 - [ ] T045 [US3] Add stitching metadata to batch events (store scaling factor, overlap size, stitching status in notes column for provenance)
 - [ ] T046 [US3] Implement stitching degradation detection (warn if overlap <3 days, log integrity warning if no overlap found per spec edge case)
 - [ ] T047 [US3] Add stitched value validation (verify no jumps >20% on consecutive days with stable behavior, alert if threshold exceeded)
@@ -136,158 +129,175 @@ Per plan.md, single backend service structure:
 
 ---
 
-## Phase 6: User Story 4 - Gap Recovery After Outages (Priority: P2)
+## Phase 6: User Story 4 - Gap Recovery After Outages (Priority: P2) ❌ REMOVED
 
-**Goal**: Automatic 14-day rolling backfill when ingestion offline >24 hours, no duplicates created
+**Status**: ❌ **REMOVED per GitHub issue #4** - Operators can manually re-run ingestion if needed. Automatic gap detection and 14-day rolling backfill are not implemented.
 
-**Independent Test**: Simulate 3-day outage, restart system, verify 14-day backfill triggers automatically and fills gaps with zero duplicates (SC-005)
+**Rationale**: Simplified implementation focuses on daily forward ingestion. Gap recovery complexity was deemed unnecessary for MVP.
 
-### Tests for User Story 4 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
-
-- [ ] T048 [P] [US4] Unit test for gap detection in fetcher/tests/unit/test_gap_detector.py (compare last fetch timestamp to current time, detect >24h gap)
-- [ ] T049 [P] [US4] Unit test for recovery window calculation in fetcher/tests/unit/test_backfill_windowing.py (14-day rolling window from last fetch)
-- [ ] T050 [P] [US4] Unit test for UPSERT idempotence in fetcher/tests/unit/test_db_upsert.py (verify INSERT OR REPLACE on (keyword, date) prevents duplicates)
-- [ ] T051 [US4] Integration test for recovery backfill in fetcher/tests/integration/test_recovery_backfill.py (simulate outage → restart → verify gap filled, zero duplicates)
-
-### Implementation for User Story 4
-
-- [ ] T052 [US4] Implement gap detector in fetcher/src/lib/gap_detector.py (queries v_latest_batch view, compares finished_at_ict to current time Asia/Bangkok)
-- [ ] T053 [US4] Implement recovery backfill trigger in CLI main (on startup, check gap >24h, trigger 14-day backfill before starting scheduler)
-- [ ] T054 [US4] Add recovery backfill mode to Backfill service (14-day window from last fetch, marks batch event "recovery backfill")
-- [ ] T055 [US4] Enhance UPSERT logic in db_operations (ensure INSERT OR REPLACE on PRIMARY KEY (keyword, date), log overwrite events)
-- [ ] T056 [US4] Add gap recovery logging (log gap size detected, recovery window calculated, rows updated vs. inserted)
-
-**Checkpoint**: Recovery backfill works - system auto-heals after outages without manual intervention
+**Obsolete Tasks** (T048-T056):
+- ~~T048-T051: Gap detection tests~~
+- ~~T052-T056: Recovery backfill implementation~~
 
 ---
 
-## Phase 7: User Story 5 - Data Quality Transparency via Granularity Badges (Priority: P2)
+## Phase 7: User Story 5 - Data Quality Transparency via Granularity Badges (Priority: P2) ❌ REMOVED
 
-**Goal**: Sparse-day 3-step fallback policy with explicit quality flags (true_daily, weekly_flat, below_detection)
+**Status**: ❌ **REMOVED per GitHub issue #4** - Weekly promotion and resampling policy are not implemented. All records have `granularity='daily'` and `quality='true'` (or NULL if below detection threshold).
 
-**Independent Test**: Create scenario with missing daily data for 4-day run, verify weekly promotion, quality=coarse flags set correctly
+**Rationale**: The 'today 1-m' approach consistently returns daily granularity. Resampling complexity was deemed unnecessary for MVP.
 
-### Tests for User Story 5 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
-
-- [ ] T057 [P] [US5] Unit test for sparse-day detection in fetcher/tests/unit/test_resampler.py (identify ≥3 consecutive days missing daily data)
-- [ ] T058 [P] [US5] Unit test for weekly promotion logic in fetcher/tests/unit/test_resampler.py (promote to weekly granularity, set impute_method='weekly_flat', quality='coarse')
-- [ ] T059 [P] [US5] Unit test for quality flag exclusion in fetcher/tests/unit/test_stitcher.py (verify coarse records excluded from future stitching factor calculations per FR-011)
-- [ ] T060 [US5] Integration test for resampling policy in fetcher/tests/integration/test_resampling.py (test full 3-step fallback: re-fetch → weekly → below_detection)
-
-### Implementation for User Story 5
-
-- [ ] T061 [US5] Implement Resampler service in fetcher/src/services/resampler.py (3-step fallback: Step 1 re-fetch wider window, Step 2 promote to weekly if ≥3-day run, Step 3 mark below_detection)
-- [ ] T062 [US5] Add weekly granularity fetch to TrendsFetcher service (support granularity='weekly' parameter for pytrends)
-- [ ] T063 [US5] Integrate resampling into Ingestion service (detect sparse days → invoke Resampler → persist with quality flags)
-- [ ] T064 [US5] Implement quality flag filtering in Stitcher (exclude quality='coarse' records when computing future scaling factors per FR-011)
-- [ ] T065 [US5] Add quality metrics to batch events (count true_daily, weekly_flat, missing per batch, populate batch event columns)
-- [ ] T066 [US5] Add zero-rate warning detection (identify all-zeros for keyword across ≥3 days, log warning in batch event notes per spec edge case)
-
-**Checkpoint**: Resampling policy functional - sparse days handled honestly with explicit quality badges
+**Obsolete Tasks** (T057-T066):
+- ~~T057-T060: Resampling tests~~
+- ~~T061-T066: Resampling implementation~~
 
 ---
 
-## Phase 8: User Story 6 - Provenance & Audit Trail for Governance (Priority: P3)
+## Phase 8: User Story 6 - Provenance & Audit Trail for Governance (Priority: P3) ⚠️ PARTIAL
 
 **Goal**: Complete provenance metadata in batch events, monthly archive snapshots with data dictionary
 
-**Independent Test**: Run multiple ingestion types (daily, backfill, manual), verify complete metadata in batch events, test monthly archive generation
+**Current Status**: ⚠️ **PARTIALLY IMPLEMENTED** - Batch events have full provenance metadata, but ArchiveService not yet implemented
+
+**Independent Test**: Run multiple ingestion types (daily, manual), verify complete metadata in batch events, test monthly archive generation
 
 ### Tests for User Story 6 (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
-- [ ] T067 [P] [US6] Contract test for batch event completeness in fetcher/tests/contract/test_event_schema.py (verify all FR-008 fields: batch_id, keywords, window, counts, status, timestamps, notes)
-- [ ] T068 [P] [US6] Unit test for batch_id generation in fetcher/tests/unit/test_batch_event.py (verify format "batch_YYYYMMDD_HHMMSS" in ICT timezone)
+- [X] T067 [P] [US6] Contract test for batch event completeness in fetcher/tests/contract/test_event_schema.py (verify all FR-010 fields: batch_id, keywords, window, counts, status, timestamps, notes)
+- [X] T068 [P] [US6] Unit test for batch_id generation in fetcher/tests/unit/test_batch_event.py (verify format "batch_YYYYMMDD_HHMMSS" in ICT timezone)
 - [ ] T069 [P] [US6] Unit test for archive CSV generation in fetcher/tests/unit/test_archiver.py (verify columns, data dictionary content, month filtering)
 - [ ] T070 [US6] Integration test for monthly archive in fetcher/tests/integration/test_archiver.py (trigger month-end archive, verify CSV files + README.txt created)
 
 ### Implementation for User Story 6
 
-- [ ] T071 [US6] Implement batch_id generator in BatchEvent model (format: batch_YYYYMMDD_HHMMSS using Asia/Bangkok timezone)
-- [ ] T072 [US6] Enhance batch event metadata in Ingestion service (populate requested_keywords as JSON array, requested_window as string, all count fields)
+- [X] T071 [US6] Implement batch_id generator in BatchEvent model (format: batch_YYYYMMDD_HHMMSS using Asia/Bangkok timezone)
+- [X] T072 [US6] Enhance batch event metadata in Ingestion service (populate requested_keywords as JSON array, requested_window as string, all count fields)
 - [ ] T073 [US6] Implement Archiver service in fetcher/src/services/archiver.py (exports raw_trenddata, events_raw_rsv_ingested, config_keywords to CSV for specified month)
 - [ ] T074 [US6] Create data dictionary template for archives (README.txt template with column descriptions, constraints, quality flags, constitution version reference)
-- [ ] T075 [US6] Add archive scheduler to CLI main (monthly trigger at month-end, invokes Archiver for previous month)
+- [ ] T075 [US6] Add archive scheduler to CLI main (monthly trigger at month-end, invokes Archiver for previous month) - DEFERRED (no scheduler in simplified implementation)
 - [ ] T076 [US6] Add CLI archive command (--archive --month=YYYY-MM for manual archive generation)
 - [ ] T077 [US6] Implement batch event lineage queries (helper functions to trace RSV records back to batch events via batch_id FK)
 
-**Checkpoint**: Provenance complete - full audit trail available, monthly archives auto-generated
+**Checkpoint**: Provenance complete - full audit trail available, monthly archives can be generated manually
 
 ---
 
-## Phase 9: Health Endpoint & Observability (Cross-Cutting)
+## Phase 9: HTTP 429 Rate Limiting Handling (US1 Extension) ✅ COMPLETED
+
+**Context**: Google Trends API returns HTTP 429 when rate limited. Implementation includes retry with exponential backoff per FR-013.
+
+**TDD Order**: Following TRUE TDD - tests BEFORE implementation
+
+- [X] T101 [RED] [US1] Write FAILING tests for RateLimitException class (tests/unit/test_rate_limit_exception.py)
+- [X] T102 [GREEN] [US1] Implement RateLimitException in lib/exceptions.py
+- [X] T103 [RED] [US1] Write FAILING tests for retry configuration parsing (tests/unit/test_config_rate_limiting.py)
+- [X] T104 [GREEN] [US1] Add rate_limiting section to config/googili.toml with defaults
+- [X] T105 [GREEN] [US1] Update lib/config.py FetcherConfig to parse rate_limiting configuration
+
+**Checkpoint**: Rate limiting configuration complete
+
+---
+
+## Phase 10: Test Suite Fixes (URGENT - 70+ Broken Tests) ⚠️
+
+**Context**: Test suite references deleted `ingest_daily(target_date)` method. Current implementation uses simplified `ingest()` method without parameters.
+
+**Current Status**: 🔄 **IN PROGRESS** - Many tests need updating to reflect simplified implementation
+
+### Test Fixes Required
+
+- [ ] T113 [P] Fix test_daily_ingestion.py (49 calls to deleted `ingest_daily()` method - replace with `ingest()`)
+- [ ] T114 [P] Fix test_end_to_end.py (6 calls to deleted method)
+- [ ] T115 [P] Fix test_scheduler_behavioral.py (6 mocks of deleted method - remove scheduler tests or mark as obsolete)
+- [ ] T116 [P] Rewrite test_cli.py for simplified CLI (remove tests for deleted run_manual(), run_daily(), run_daemon() functions)
+- [ ] T117 [P] Update test_config.py (remove backfill property tests, keep stitching configuration tests)
+
+### New Tests for Simplified Implementation
+
+- [ ] T118 [US1] Create test_ingestion_simplified.py with tests for:
+  - One keyword per request (verify loop through keywords individually)
+  - 'today 1-m' timeframe usage (verify no date calculations)
+  - Jitter between requests (verify _apply_jitter() called between keywords)
+  - Batch type='ingestion' (verify correct batch event type)
+  - Idempotent re-runs (verify UPSERT semantics)
+
+**Checkpoint**: Test suite fully passing with 100% alignment to simplified implementation
+
+---
+
+## Phase 11: Configuration & Schema Fixes ⚠️
+
+**Context**: Minor configuration and schema issues identified during simplification
+
+### Required Fixes
+
+- [ ] T119 Fix schema province constraint (support both 'TH' and 'TH-50' in CHECK constraint)
+- [ ] T120 Add [rate_limiting] section to root config/googili.toml (currently only in example file)
+- [ ] T121 Update schema comments to reflect simplified implementation (remove references to backfill/recovery batch types if obsolete)
+
+**Checkpoint**: Configuration and schema aligned with current implementation
+
+---
+
+## Phase 12: Health Endpoint & Observability (Cross-Cutting) ⚠️ DEFERRED
 
 **Purpose**: /healthz endpoint for Docker healthcheck and Visualiser polling, per Constitution Principle V & VIII
+
+**Status**: ⚠️ **DEFERRED** - Not yet implemented in simplified version
 
 ### Tests for Health Endpoint (TDD - WRITE FIRST, ENSURE FAIL) ⚠️
 
 - [ ] T078 [P] Unit test for health probe in fetcher/tests/unit/test_health.py (test DB writability check, view query, timeout handling)
-- [ ] T079 [P] Contract test for /healthz JSON schema in fetcher/tests/contract/test_healthz_contract.py (verify response structure matches spec: status, last_fetch, batch_id, row counts, db_writable)
+- [ ] T079 [P] Contract test for /healthz JSON schema in fetcher/tests/contract/test_healthz_contract.py (verify response structure matches spec)
 - [ ] T080 Integration test for health endpoint in fetcher/tests/integration/test_health_endpoint.py (test 200 OK success, 200 degraded >24h, 503 DB failure scenarios)
 
 ### Implementation for Health Endpoint
 
-- [ ] T081 Implement health probe table operations in fetcher/src/lib/health_probe.py (insert probe records, test DB writability per database-schema.sql trigger)
-- [ ] T082 Implement Flask health endpoint in fetcher/src/lib/health.py (GET /healthz, queries v_latest_batch, returns JSON with status/timestamps/counts per research.md Decision 6)
-- [ ] T083 Add health endpoint to CLI main (run Flask app on port 8080 in separate thread when --daemon mode)
-- [ ] T084 Add health status logic (return 200 success if recent fetch, 200 degraded if >24h, 503 if DB error or query fails)
-- [ ] T085 Add Docker healthcheck configuration in Dockerfile (HEALTHCHECK CMD curl -fsS http://localhost:8080/healthz per quickstart.md)
+- [ ] T081 Implement health probe table operations in fetcher/src/lib/health_probe.py (insert probe records, test DB writability)
+- [ ] T082 Implement Flask health endpoint in fetcher/src/lib/health.py (GET /healthz, queries v_latest_batch, returns JSON)
+- [ ] T083 Add health endpoint to CLI main (run Flask app on port 8080 in separate thread)
+- [ ] T084 Add health status logic (return 200 success if recent fetch, 200 degraded if >24h, 503 if DB error)
+- [ ] T085 Add Docker healthcheck configuration in Dockerfile (HEALTHCHECK CMD curl)
 
 **Checkpoint**: Health endpoint functional - Docker can monitor Fetcher, Visualiser can poll status
 
 ---
 
-## Phase 10: Docker Deployment (Cross-Cutting)
+## Phase 13: Docker Deployment (Cross-Cutting) ⚠️ DEFERRED
 
-**Purpose**: Containerized deployment with Docker Compose per research.md Decision 9
+**Purpose**: Containerized deployment with Docker Compose per research.md
+
+**Status**: ⚠️ **DEFERRED** - Not yet needed for simplified manual execution
 
 ### Tests for Docker Deployment (Integration) ⚠️
 
-- [ ] T086 Integration test for Docker build in fetcher/tests/integration/test_docker_build.py (verify Dockerfile builds successfully, image tagged correctly)
-- [ ] T087 Integration test for Docker Compose in fetcher/tests/integration/test_docker_compose.py (docker compose up succeeds, healthcheck passes, volumes mounted)
+- [ ] T086 Integration test for Docker build in fetcher/tests/integration/test_docker_build.py
+- [ ] T087 Integration test for Docker Compose in fetcher/tests/integration/test_docker_compose.py
 
 ### Implementation for Docker Deployment
 
-- [ ] T088 Create Dockerfile for fetcher (Python 3.11-slim base, copy src/, install requirements.txt, ENTRYPOINT python -m fetcher.cli.main)
-- [ ] T089 Create docker-compose.yml (service definition with TZ=Asia/Bangkok, volume mounts for data/ and config/, port 8080 exposed, healthcheck, restart unless-stopped per quickstart.md Step 3)
-- [ ] T090 Create .dockerignore (exclude tests/, venv/, __pycache__/, *.pyc, data/, *.db)
-- [ ] T091 Add environment variable configuration support (LOG_LEVEL, DB_PATH overrides via ENV)
-- [ ] T092 Test Docker Compose deployment end-to-end (docker compose up -d → verify healthcheck passes → trigger ingestion → verify data persists)
+- [ ] T088 Create Dockerfile for fetcher
+- [ ] T089 Create docker-compose.yml
+- [ ] T090 Create .dockerignore
+- [ ] T091 Add environment variable configuration support
+- [ ] T092 Test Docker Compose deployment end-to-end
 
 **Checkpoint**: Docker deployment ready - single-command startup operational
 
 ---
 
-## Phase 11: Polish & Documentation (Final Phase)
+## Phase 14: Polish & Documentation (Final Phase)
 
 **Purpose**: Code quality, documentation, final validation per Constitution
 
 - [ ] T093 [P] Add comprehensive docstrings to all modules (models, services, lib, cli) following Google Python Style Guide
 - [ ] T094 [P] Run code linting and formatting (black, flake8, mypy type checking)
-- [ ] T095 [P] Update fetcher/README.md with full usage instructions (CLI commands, Docker deployment, configuration reference)
-- [ ] T096 [P] Create development setup guide in fetcher/docs/DEVELOPMENT.md (local setup without Docker, test execution, debugging)
+- [ ] T095 [P] Update fetcher/README.md with full usage instructions (CLI commands, configuration reference)
+- [ ] T096 [P] Create development setup guide in fetcher/docs/DEVELOPMENT.md (local setup, test execution, debugging)
 - [ ] T097 Run quickstart.md validation end-to-end (follow all steps from scratch, verify outcomes match documentation)
-- [ ] T098 [P] Add constitution compliance checklist to fetcher/docs/CONSTITUTION_COMPLIANCE.md (verify all 10 principles satisfied with evidence)
-- [ ] T099 Performance testing (verify 90-day backfill <15 min for 10 keywords per SC-003, daily fetch <60s per performance goals)
-- [ ] T100 Security review (verify no credentials logged, TOML config validation, SQL injection prevention via parameterized queries)
-
-### HTTP 429 Rate Limiting Handling (FR-016)
-
-**Context**: Google Trends API returns HTTP 429 when rate limited. Current implementation treats this as fatal error, causing permanent data gaps. Must implement retry with exponential backoff per FR-016.
-
-**TDD Order**: Following TRUE TDD - tests BEFORE implementation
-
-- [X] T101 [RED] [US1] Write FAILING tests for RateLimitException class (tests/unit/test_rate_limit_exception.py) - verify inheritance from PyTrendsException, retry_after attribute storage, serialization for logging
-- [X] T102 [GREEN] [US1] Implement RateLimitException in lib/exceptions.py (minimal code to pass T101 tests)
-- [X] T103 [RED] [US1] Write FAILING tests for retry configuration parsing (tests/unit/test_config_rate_limiting.py) - verify default values, TOML parsing, validation
-- [X] T104 [GREEN] [US1] Add rate_limiting section to config/googili.toml with defaults (max_retries=3, backoff_base_seconds=60, backoff_multiplier=5.0, max_backoff_seconds=1800, respect_retry_after=true)
-- [X] T105 [GREEN] [US1] Update lib/config.py FetcherConfig to parse rate_limiting configuration with validation
-- [ ] T106 [RED] [US1] Write FAILING tests for exponential backoff retry logic (tests/unit/test_trends_fetcher_retry.py) - verify retry on 429, backoff calculation, Retry-After header respect, RateLimitException after max retries, jitter randomization
-- [ ] T107 [GREEN] [US1] Implement exponential backoff retry in services/trends_fetcher.py fetch_daily_rsv() and fetch_weekly_rsv() methods - wrap pytrends calls in retry loop, catch TooManyRequestsError, calculate backoff with jitter, log retry attempts
-- [ ] T108 [RED] [US1] Write FAILING tests for ingestion RateLimitException handling (tests/unit/test_ingestion_rate_limiting.py) - verify batch marked "degraded" not "fail" on RateLimitException, other PyTrendsException still fail
-- [ ] T109 [GREEN] [US1] Update services/ingestion.py ingest_daily() to catch RateLimitException separately, mark batch degraded with notes, don't re-raise (allow graceful degradation)
-- [ ] T110 [RED] [US2] Write FAILING integration tests for backfill per-date retry (tests/integration/test_cli_backfill_retry.py) - verify failed dates retried after cooldown, batch continues after 429 (not aborted), exit code based on final success
-- [ ] T111 [GREEN] [US2] Rewrite main.py run_backfill_initial() to implement per-date retry loop - collect failed dates, retry after cooldown, provide detailed progress logging
-- [ ] T112 [GREEN] [US1] Add 429 guidance to main.py run_manual() - catch RateLimitException, display helpful retry command with suggested wait time
+- [ ] T098 [P] Add constitution compliance checklist to fetcher/docs/CONSTITUTION_COMPLIANCE.md (verify all 10 principles satisfied)
+- [ ] T099 Performance testing (verify daily fetch <10 minutes for 10 keywords per SC-003)
+- [ ] T100 Security review (verify no credentials logged, TOML config validation, SQL injection prevention)
 
 ---
 
@@ -295,105 +305,31 @@ Per plan.md, single backend service structure:
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - start immediately
-- **Foundational (Phase 2)**: Depends on Setup → BLOCKS all user stories
-- **User Stories (Phases 3-8)**: All depend on Foundational completion
-  - US1, US2, US3 (P1) can proceed in parallel after Foundational
-  - US4, US5 (P2) can proceed in parallel but integrate with P1 stories
-  - US6 (P3) can proceed but references all prior stories
-- **Health Endpoint (Phase 9)**: Can start after Foundational, integrates with US1 batch events
-- **Docker (Phase 10)**: Can start after US1 complete (needs basic ingestion working)
-- **Polish (Phase 11)**: Depends on all desired user stories complete
+- **Setup (Phase 1)**: No dependencies - start immediately ✅ COMPLETE
+- **Foundational (Phase 2)**: Depends on Setup → BLOCKS all user stories ✅ COMPLETE
+- **User Story 1 (Phase 3)**: Depends on Foundational ✅ COMPLETE (simplified)
+- **User Story 3 (Phase 5)**: Depends on Foundational 🔄 CURRENT WORK
+- **Rate Limiting (Phase 9)**: Extends US1 ✅ COMPLETE
+- **Test Fixes (Phase 10)**: Can proceed immediately 🔄 URGENT
+- **Config/Schema Fixes (Phase 11)**: Can proceed immediately ⚠️ NEEDED
+- **User Story 6 (Phase 8)**: Can proceed in parallel with US3 ⚠️ PARTIAL
+- **Health Endpoint (Phase 12)**: Deferred ⚠️ FUTURE
+- **Docker (Phase 13)**: Deferred ⚠️ FUTURE
+- **Polish (Phase 14)**: Depends on all desired user stories complete ⚠️ FUTURE
 
-### User Story Dependencies
+### Removed Dependencies
 
-- **User Story 1 (P1 - Daily Ingestion)**: Foundation only - **MVP CORE**
-- **User Story 2 (P1 - 90-Day Backfill)**: Foundation only, extends US1 - **MVP CORE**
-- **User Story 3 (P1 - Stitching)**: Foundation only, extends US1 - **MVP CORE**
-- **User Story 4 (P2 - Gap Recovery)**: Depends on US1, US2 (uses backfill + ingestion)
-- **User Story 5 (P2 - Quality Badges)**: Depends on US1, US3 (uses ingestion + stitching)
-- **User Story 6 (P3 - Provenance)**: Extends US1 batch events, can be deferred post-MVP
+- ❌ **User Story 2 (90-Day Backfill)**: REMOVED
+- ❌ **User Story 4 (Gap Recovery)**: REMOVED
+- ❌ **User Story 5 (Quality Badges/Resampling)**: REMOVED
+- ❌ **APScheduler/Daemon Mode**: REMOVED
 
-### Within Each User Story (TDD - NON-NEGOTIABLE)
+### Current Priority Order
 
-1. **Tests FIRST** - write all tests, ensure they FAIL
-2. Models - domain entities
-3. Services - business logic
-4. Integration - wire services together
-5. Verify tests PASS - all tests must pass before story complete
-
-### Parallel Opportunities
-
-- **Phase 1 Setup**: All tasks with [P] can run in parallel
-- **Phase 2 Foundational**: T007 config + T008 logger + T011 timezone + T012 exceptions can run parallel after T006 database
-- **Once Foundational completes**:
-  - US1, US2, US3 (all P1) can start in parallel (different services/models)
-  - US4, US5 (both P2) can start in parallel after P1 stories
-- **Within each story**: All tests marked [P] can run parallel, all models marked [P] can run parallel
-
----
-
-## Parallel Example: User Story 1
-
-```bash
-# Write all US1 tests in parallel (TDD - FAIL first):
-Task T013: "Unit test for pytrends wrapper in fetcher/tests/unit/test_trends_fetcher.py"
-Task T014: "Unit test for batch event creation in fetcher/tests/unit/test_batch_event.py"
-Task T015: "Contract test for RSV record schema in fetcher/tests/contract/test_rsv_record_schema.py"
-Task T016: "Contract test for batch event schema in fetcher/tests/contract/test_batch_event_schema.py"
-
-# Create all US1 models in parallel (after tests written):
-Task T018: "Create RSV Record model in fetcher/src/models/rsv_record.py"
-Task T019: "Create Batch Event model in fetcher/src/models/batch_event.py"
-Task T020: "Create Keyword Configuration model in fetcher/src/models/keyword_config.py"
-```
-
----
-
-## Parallel Example: User Story 3
-
-```bash
-# Write all US3 tests in parallel (TDD - FAIL first):
-Task T037: "Unit test for trimmed mean calculation in fetcher/tests/unit/test_stitcher.py"
-Task T038: "Unit test for overlap window extraction in fetcher/tests/unit/test_windowing.py"
-Task T040: "Unit test for stitching factor storage in fetcher/tests/unit/test_stitcher.py"
-```
-
----
-
-## Implementation Strategy
-
-### MVP First (User Stories 1, 2, 3 - All P1)
-
-1. Complete **Phase 1: Setup** (T001-T005)
-2. Complete **Phase 2: Foundational** (T006-T012) - CRITICAL GATE
-3. Complete **Phase 3: US1 - Daily Ingestion** (T013-T027) - TDD: tests first → fail → implement → pass
-4. Complete **Phase 4: US2 - 90-Day Backfill** (T028-T036) - TDD: tests first → fail → implement → pass
-5. Complete **Phase 5: US3 - Stitching** (T037-T047) - TDD: tests first → fail → implement → pass
-6. Complete **Phase 9: Health Endpoint** (T078-T085) - needed for Docker healthcheck
-7. Complete **Phase 10: Docker** (T086-T092) - containerize for deployment
-8. **STOP and VALIDATE**: Test MVP independently per quickstart.md, verify all success criteria SC-001 to SC-004
-9. Deploy/demo MVP - basic ingestion + backfill + stitching functional
-
-### Incremental Delivery Beyond MVP
-
-1. **MVP deployed** (US1 + US2 + US3) → Foundation operational
-2. Add **US4: Gap Recovery** (P2) → Test independently → Deploy (auto-healing added)
-3. Add **US5: Quality Badges** (P2) → Test independently → Deploy (data transparency added)
-4. Add **US6: Provenance** (P3) → Test independently → Deploy (full audit trail)
-5. Each story adds value without breaking previous functionality
-
-### Parallel Team Strategy
-
-With multiple developers after Foundational complete:
-
-1. **Developer A**: US1 (Daily Ingestion) - blocking for others
-2. **Developer B**: US2 (Backfill) - can start parallel to A
-3. **Developer C**: US3 (Stitching) - can start parallel to A
-4. Once US1 done: **Developer A** → Health Endpoint + Docker
-5. Once US1, US2 done: **Developer B** → US4 (Gap Recovery)
-6. Once US1, US3 done: **Developer C** → US5 (Quality Badges)
-7. Final: **Developer A or B or C** → US6 (Provenance)
+1. **IMMEDIATE**: Phase 5 (US3 Stitching) - Core functionality for continuous time series
+2. **URGENT**: Phase 10 (Test Suite Fixes) - Restore test coverage to 100%
+3. **NEEDED**: Phase 11 (Config/Schema Fixes) - Align configuration with current state
+4. **NICE TO HAVE**: Phase 8 (ArchiveService completion) - Enable monthly exports
 
 ---
 
@@ -411,15 +347,38 @@ For EVERY user story:
 
 ---
 
+## Implementation Strategy (Revised for Simplified Scope)
+
+### MVP First (User Story 1 + 3 - Both P1)
+
+1. ✅ Complete **Phase 1: Setup** (T001-T005)
+2. ✅ Complete **Phase 2: Foundational** (T006-T012) - CRITICAL GATE
+3. ✅ Complete **Phase 3: US1 - Daily Ingestion** (T013-T025) - Simplified 'today 1-m' implementation
+4. ✅ Complete **Phase 9: Rate Limiting** (T101-T105) - US1 extension
+5. 🔄 Complete **Phase 5: US3 - Stitching** (T037-T047) - CURRENT WORK
+6. 🔄 Complete **Phase 10: Test Suite Fixes** (T113-T118) - URGENT
+7. Complete **Phase 11: Config/Schema Fixes** (T119-T121)
+8. **STOP and VALIDATE**: Test MVP independently, verify all success criteria SC-001 to SC-010
+9. Deploy/demo MVP - basic ingestion + stitching functional
+
+### Incremental Delivery Beyond MVP
+
+1. **MVP deployed** (US1 + US3) → Foundation operational with continuous time series
+2. Add **Health Endpoint** (Phase 12) → Enable monitoring
+3. Add **Docker Deployment** (Phase 13) → Enable containerized deployment
+4. Add **ArchiveService** (Phase 8) → Enable monthly exports
+5. Polish & Documentation (Phase 14) → Production-ready
+
+---
+
 ## Notes
 
 - **[P] tasks** = different files, no dependencies, can parallelize
 - **[Story] label** = maps to spec.md user stories for traceability
 - **TDD mandatory** = write tests FIRST, ensure FAIL, then implement
-- **Each story independently testable** = can deploy/demo any P1 story alone
-- **Constitution compliance** = verify all 10 principles throughout (checklist in T098)
+- **Constitution compliance** = verify all 10 principles throughout
 - **Timezone critical** = all timestamps Asia/Bangkok (ICT), verify in tests
-- **Performance goals** = validate in T099 (backfill <15min, fetch <60s, /healthz <100ms)
-- **Success criteria** = verify SC-001 to SC-010 in final validation (quickstart.md T097)
+- **Performance goals** = validate daily fetch <10 min for 10 keywords per SC-003
+- **Success criteria** = verify SC-001 to SC-010 in final validation
 - **Golden-file tests** = T039 uses known stitching scenarios, maintain fixtures in version control
-- **Avoid**: Starting implementation before tests written, mixing user story code that breaks independence
+- **Simplified scope** = Removed backfill/recovery/resampling per GitHub issue #4, focus on daily 'today 1-m' ingestion + stitching

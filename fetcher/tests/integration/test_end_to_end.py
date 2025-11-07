@@ -34,7 +34,7 @@ def test_config():
     class MockConfig:
         def __init__(self):
             self.province = 'TH-50'
-            self.jitter_minutes = [1, 2]
+            self.jitter_seconds = [1, 2]
             self.keywords = ['ไข้หวัดนก', 'ไอ', 'หวัด']
     return MockConfig()
 

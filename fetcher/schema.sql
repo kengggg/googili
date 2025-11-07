@@ -73,10 +73,10 @@ CREATE TABLE IF NOT EXISTS config_keywords (
     term TEXT PRIMARY KEY,
     active BOOLEAN NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL,
-    province_code TEXT NOT NULL DEFAULT 'TH-50',
+    province_code TEXT NOT NULL DEFAULT 'TH',
     notes TEXT,  -- Optional notes about keyword (e.g., synonym info, deprecation reason)
 
-    CHECK(province_code = 'TH-50')  -- MVP: Chiang Mai only
+    CHECK(province_code IN ('TH', 'TH-50'))  -- Support Thailand-wide and Chiang Mai
 );
 
 -- ========================================

@@ -31,7 +31,7 @@ def test_config():
     class MockConfig:
         def __init__(self):
             self.province = 'TH-50'
-            self.jitter_minutes = [1, 2]
+            self.jitter_seconds = [1, 2]
             self.keywords = ['ไข้', 'ไอ', 'เจ็บคอ']
     return MockConfig()
 
@@ -65,7 +65,7 @@ class TestDailyIngestionEndToEnd:
         ingestion = IngestionService(db, config)
 
         target_date = date(2025, 11, 1)
-        batch_event = ingestion.ingest_daily(target_date=target_date)
+        batch_event = ingestion.ingest()
 
         assert batch_event.status in ['success', 'degraded']
         assert batch_event.rows_written > 0
@@ -76,10 +76,10 @@ class TestDailyIngestionEndToEnd:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         assert batch_event.batch_id.startswith('batch_')
-        assert batch_event.batch_type == 'daily'
+        assert batch_event.batch_type == 'ingestion'
         assert len(batch_event.requested_keywords) > 0
         assert batch_event.started_at_ict is not None
 
@@ -89,7 +89,7 @@ class TestDailyIngestionEndToEnd:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM raw_trenddata WHERE batch_id=?", (batch_event.batch_id,))
@@ -102,7 +102,7 @@ class TestDailyIngestionEndToEnd:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         assert batch_event.status in ['success', 'degraded']
         assert batch_event.finished_at_ict is not None
@@ -113,7 +113,7 @@ class TestDailyIngestionEndToEnd:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         # Batch event contains all metadata
         assert batch_event.batch_id is not None
@@ -130,7 +130,7 @@ class TestDailyIngestionSingleDay:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         assert '2025-11-01 to 2025-11-01' in batch_event.requested_window
 
     def test_ingest_yesterday(self, test_db_instance, mock_pytrends, test_config):
@@ -139,7 +139,7 @@ class TestDailyIngestionSingleDay:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         assert batch_event.requested_window is not None
 
 
@@ -152,7 +152,7 @@ class TestDailyIngestionMultipleKeywords:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         assert len(batch_event.requested_keywords) > 0
 
     def test_keyword_order_preserved(self, test_db_instance, mock_pytrends, test_config):
@@ -161,7 +161,7 @@ class TestDailyIngestionMultipleKeywords:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # Keywords should be a list
         assert isinstance(batch_event.requested_keywords, list)
 
@@ -176,9 +176,9 @@ class TestDailyIngestionIdempotence:
         ingestion = IngestionService(db, config)
 
         # First run
-        batch1 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch1 = ingestion.ingest()
         # Second run
-        batch2 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch2 = ingestion.ingest()
 
         assert batch1.batch_id != batch2.batch_id
         assert batch2.rows_updated >= 0
@@ -189,8 +189,8 @@ class TestDailyIngestionIdempotence:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch1 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
-        batch2 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch1 = ingestion.ingest()
+        batch2 = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM events_raw_rsv_ingested")
@@ -203,8 +203,8 @@ class TestDailyIngestionIdempotence:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch1 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
-        batch2 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch1 = ingestion.ingest()
+        batch2 = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT DISTINCT batch_id FROM raw_trenddata WHERE date='2025-11-01'")
@@ -228,7 +228,7 @@ class TestDailyIngestionErrorHandling:
 
         from lib.exceptions import PyTrendsException
         with pytest.raises(PyTrendsException):
-            ingestion.ingest_daily(target_date=date(2025, 11, 1))
+            ingestion.ingest()
 
     @patch('services.trends_fetcher.TrendReq')
     def test_database_write_error(self, mock_pytrends_class, test_db_instance, test_config):
@@ -253,7 +253,7 @@ class TestDailyIngestionErrorHandling:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # Should complete with degraded status or success
         assert batch_event.status in ['success', 'degraded']
 
@@ -267,7 +267,7 @@ class TestDailyIngestionWithConfig:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # Keywords loaded from database
         assert len(batch_event.requested_keywords) > 0
 
@@ -277,7 +277,7 @@ class TestDailyIngestionWithConfig:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # Province configured correctly
         assert config.province == 'TH-50'
 
@@ -287,13 +287,13 @@ class TestDailyIngestionWithConfig:
         # Create config with different jitter for this test
         class CustomConfig:
             province = 'TH-50'
-            jitter_minutes = [3, 5]
+            jitter_seconds = [3, 5]
             keywords = ['ไข้', 'ไอ']
         config = CustomConfig()
         ingestion = IngestionService(db, config)
 
         # Jitter configured
-        assert config.jitter_minutes == [3, 5]
+        assert config.jitter_seconds == [3, 5]
 
 
 class TestDailyIngestionBatchCounts:
@@ -305,7 +305,7 @@ class TestDailyIngestionBatchCounts:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM raw_trenddata WHERE batch_id=?", (batch_event.batch_id,))
@@ -318,7 +318,7 @@ class TestDailyIngestionBatchCounts:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         assert batch_event.rows_updated == 0
 
     def test_rows_updated_incremented_on_rerun(self, test_db_instance, mock_pytrends, test_config):
@@ -327,8 +327,8 @@ class TestDailyIngestionBatchCounts:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch1 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
-        batch2 = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch1 = ingestion.ingest()
+        batch2 = ingestion.ingest()
 
         assert batch2.rows_updated > 0
 
@@ -338,7 +338,7 @@ class TestDailyIngestionBatchCounts:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # With mocked data, should have complete data
         assert batch_event.rows_missing >= 0
 
@@ -362,7 +362,7 @@ class TestDailyIngestionWithZeroRSV:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT rsv_raw FROM raw_trenddata WHERE batch_id=? AND rsv_raw=0", (batch_event.batch_id,))
@@ -381,13 +381,13 @@ class TestDailyIngestionPerformance:
         # Create config with minimal jitter for speed test
         class FastConfig:
             province = 'TH-50'
-            jitter_minutes = [0, 1]
+            jitter_seconds = [0, 1]
             keywords = ['ไข้']
         config = FastConfig()
         ingestion = IngestionService(db, config)
 
         start = time.time()
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         elapsed = time.time() - start
 
         # Should complete quickly (under 10 minutes)
@@ -408,7 +408,7 @@ class TestDailyIngestionTransactionBehavior:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
         # Transaction completed
         assert batch_event.status in ['success', 'degraded', 'fail']
 
@@ -418,7 +418,7 @@ class TestDailyIngestionTransactionBehavior:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT batch_id FROM events_raw_rsv_ingested WHERE batch_id=?", (batch_event.batch_id,))
@@ -434,7 +434,7 @@ class TestDailyIngestionWithRealDatabase:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         # Verify batch event
         assert batch_event.batch_id is not None
@@ -452,7 +452,7 @@ class TestDailyIngestionWithRealDatabase:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT * FROM v_latest_batch")
@@ -466,7 +466,7 @@ class TestDailyIngestionWithRealDatabase:
         config = test_config
         ingestion = IngestionService(db, config)
 
-        batch_event = ingestion.ingest_daily(target_date=date(2025, 11, 1))
+        batch_event = ingestion.ingest()
 
         with db.get_connection(auto_commit=False) as conn:
             cursor = conn.execute("SELECT * FROM v_recent_rsv")

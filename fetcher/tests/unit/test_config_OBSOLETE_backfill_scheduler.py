@@ -356,7 +356,7 @@ class TestConfigurationProperties:
 
                 [schedule]
                 daily_time = "07:30"
-                jitter_minutes = [3, 5]
+                jitter_seconds = [3, 5]
                 backfill_on_startup_if_gap_hours = 24
 
                 [backfill]
