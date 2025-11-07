@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_rsv_fetched ON raw_trenddata(fetched_at_ict DESC)
 
 CREATE TABLE IF NOT EXISTS events_raw_rsv_ingested (
     batch_id TEXT NOT NULL PRIMARY KEY,
-    batch_type TEXT NOT NULL CHECK(batch_type IN ('daily', 'initial_backfill', 'recovery_backfill', 'manual')),
+    batch_type TEXT NOT NULL CHECK(batch_type IN ('daily', 'initial_backfill', 'recovery_backfill', 'manual', 'ingestion')),
     requested_keywords TEXT NOT NULL,  -- JSON array: ["ไข้", "ไอ", ...]
     requested_window TEXT NOT NULL,    -- "2025-11-03 to 2025-11-04"
     started_at_ict TIMESTAMP NOT NULL,

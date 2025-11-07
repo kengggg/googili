@@ -33,7 +33,7 @@ class TrendsFetcher:
     Google Trends RSV data fetcher with rate limiting and error handling.
 
     Handles:
-    - Province scoping (TH-50 for Chiang Mai)
+    - Geographic scoping (TH for Thailand country-wide)
     - Daily and weekly granularity
     - Rate limiting with configurable jitter
     - Error handling and retries
@@ -41,9 +41,9 @@ class TrendsFetcher:
 
     def __init__(
         self,
-        province: str = 'TH-50',
+        province: str = 'TH',
         jitter_range: tuple = (3, 5),
-        hl: str = 'th',
+        hl: str = 'en-US',
         tz: int = 420,  # UTC+7 for Asia/Bangkok
         config: Optional[FetcherConfig] = None
     ):
@@ -51,21 +51,12 @@ class TrendsFetcher:
         Initialize TrendsFetcher.
 
         Args:
-            province: ISO 3166-2 province code (default: TH-50 for Chiang Mai)
+            province: ISO 3166-2 code (default: TH for Thailand)
             jitter_range: Min/max seconds for rate limiting jitter (default: 3-5)
-            hl: Language code for Google Trends (default: 'th' for Thai)
+            hl: Language code for Google Trends (default: 'en-US')
             tz: Timezone offset in minutes (default: 420 for UTC+7)
             config: Optional FetcherConfig for retry configuration
-
-        Raises:
-            ValueError: If province is not TH-50 (MVP constraint)
         """
-        # MVP constraint: Only TH-50 supported
-        if province != 'TH-50':
-            raise ValueError(
-                f"MVP constraint: Only TH-50 (Chiang Mai) supported. Got: {province}"
-            )
-
         self.province = province
         self.jitter_range = jitter_range
         self.hl = hl
@@ -206,18 +197,16 @@ class TrendsFetcher:
     def fetch_daily_rsv(
         self,
         keywords: List[str],
-        start_date: date,
-        end_date: date,
-        batch_id: str
+        batch_id: str,
+        timeframe: str = 'today 1-m'
     ) -> List[RSVRecord]:
         """
         Fetch daily granularity RSV data for keywords.
 
         Args:
             keywords: List of Thai keywords to fetch
-            start_date: Start date of window
-            end_date: End date of window (inclusive)
             batch_id: Batch identifier for provenance
+            timeframe: pytrends timeframe format (default: 'today 1-m' for past 30 days)
 
         Returns:
             List of RSVRecord instances
@@ -226,8 +215,7 @@ class TrendsFetcher:
             PyTrendsException: If pytrends API call fails
         """
         logger.info(
-            f"Fetching daily RSV: keywords={len(keywords)}, "
-            f"window={start_date} to {end_date}"
+            f"Fetching daily RSV: keywords={len(keywords)}, timeframe={timeframe}"
         )
 
         records = []
@@ -235,7 +223,6 @@ class TrendsFetcher:
         try:
             # Build payload for pytrends
             pytrends = self._get_pytrends()
-            timeframe = self._format_timeframe(start_date, end_date)
 
             logger.debug(f"pytrends payload: kw_list={keywords}, timeframe={timeframe}, geo={self.province}")
 
@@ -278,7 +265,7 @@ class TrendsFetcher:
                         keyword=keyword,
                         date_val=date_val,
                         rsv_value=int(rsv_value),
-                        source_window_start=start_date,
+                        source_window_start=date_val,  # Use the actual date
                         batch_id=batch_id,
                         granularity='daily'
                     )

@@ -38,7 +38,7 @@ class TestConfigurationFileLoading:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้", "ไอ", "หวัด"]
@@ -55,7 +55,7 @@ class TestConfigurationFileLoading:
         config = FetcherConfig(config_path)
 
         # Verify configuration ACTUALLY loaded
-        assert config.province == "TH-50"
+        assert config.province == "TH"
         assert config.keywords == ["ไข้", "ไอ", "หวัด"]
         assert config.daily_time == "07:30"
         assert config.initial_backfill_days == 90
@@ -131,7 +131,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [schedule]
                 daily_time = "07:30"
@@ -156,7 +156,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -181,7 +181,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -206,7 +206,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 # Missing terms field
@@ -234,7 +234,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = []
@@ -262,7 +262,7 @@ class TestConfigurationValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = "ไข้"  # Should be array
@@ -294,7 +294,7 @@ class TestProvinceValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -308,19 +308,19 @@ class TestProvinceValidation:
             config_path = tmp.name
 
         config = FetcherConfig(config_path)
-        assert config.province == "TH-50"
+        assert config.province == "TH"
 
         Path(config_path).unlink()
 
-    def test_raises_error_for_invalid_province(self):
+    def test_accepts_any_iso_province_code(self):
         """
-        SPEC: MVP constraint - only TH-50 supported
-        BEHAVIOR: FetcherConfig ACTUALLY rejects other provinces
+        SPEC: System supports any ISO 3166-2 province code
+        BEHAVIOR: FetcherConfig ACTUALLY accepts various province codes
         """
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-10"  # Bangkok - not supported in MVP
+                province = "TH-10"  # Bangkok
 
                 [keywords]
                 terms = ["ไข้"]
@@ -333,11 +333,8 @@ class TestProvinceValidation:
             """)
             config_path = tmp.name
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            FetcherConfig(config_path)
-
-        assert "TH-50" in str(exc_info.value)
-        assert "MVP" in str(exc_info.value)
+        config = FetcherConfig(config_path)
+        assert config.province == "TH-10"
 
         Path(config_path).unlink()
 
@@ -351,7 +348,7 @@ class TestConfigurationProperties:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
                 timezone = "Asia/Bangkok"
 
                 [keywords]
@@ -405,7 +402,7 @@ class TestConfigurationProperties:
         SPEC: Province configuration must be accessible
         BEHAVIOR: province property ACTUALLY returns province code
         """
-        assert full_config.province == "TH-50"
+        assert full_config.province == "TH"
 
     def test_timezone_property_returns_string(self, full_config):
         """
@@ -421,12 +418,12 @@ class TestConfigurationProperties:
         """
         assert full_config.daily_time == "07:30"
 
-    def test_jitter_minutes_property_returns_list(self, full_config):
+    def test_jitter_seconds_property_returns_list(self, full_config):
         """
         SPEC: Jitter configuration must be accessible
-        BEHAVIOR: jitter_minutes property ACTUALLY returns [min, max] range
+        BEHAVIOR: jitter_seconds property ACTUALLY returns [min, max] range
         """
-        jitter = full_config.jitter_minutes
+        jitter = full_config.jitter_seconds
         assert isinstance(jitter, list)
         assert len(jitter) == 2
         assert jitter == [3, 5]
@@ -487,7 +484,7 @@ class TestConfigurationDefaults:
             config_path = tmp.name
 
         config = FetcherConfig(config_path)
-        assert config.province == "TH-50"
+        assert config.province == "TH"
 
         Path(config_path).unlink()
 
@@ -499,7 +496,7 @@ class TestConfigurationDefaults:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -525,7 +522,7 @@ class TestConfigurationDefaults:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -543,15 +540,15 @@ class TestConfigurationDefaults:
 
         Path(config_path).unlink()
 
-    def test_jitter_minutes_defaults_to_3_5(self):
+    def test_jitter_seconds_defaults_to_3_5(self):
         """
         SPEC: Default jitter prevents simultaneous execution
-        BEHAVIOR: jitter_minutes ACTUALLY defaults to [3, 5]
+        BEHAVIOR: jitter_seconds ACTUALLY defaults to [3, 5]
         """
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้"]
@@ -565,7 +562,7 @@ class TestConfigurationDefaults:
             config_path = tmp.name
 
         config = FetcherConfig(config_path)
-        assert config.jitter_minutes == [3, 5]
+        assert config.jitter_seconds == [3, 5]
 
         Path(config_path).unlink()
 
@@ -581,7 +578,7 @@ class TestConfigurationRawAccess:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as tmp:
             tmp.write("""
                 [general]
-                province = "TH-50"
+                province = "TH"
 
                 [keywords]
                 terms = ["ไข้", "ไอ"]

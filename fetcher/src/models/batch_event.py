@@ -77,7 +77,7 @@ class BatchEvent:
     def __post_init__(self):
         """Validate field values after initialization."""
         # Validate batch_type
-        valid_types = ['daily', 'initial_backfill', 'recovery_backfill', 'manual']
+        valid_types = ['daily', 'initial_backfill', 'recovery_backfill', 'manual', 'ingestion']
         if self.batch_type not in valid_types:
             raise ValueError(f"batch_type must be one of {valid_types}, got '{self.batch_type}'")
 

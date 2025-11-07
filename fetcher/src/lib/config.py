@@ -71,7 +71,7 @@ class FetcherConfig:
 
     def _validate(self) -> None:
         """Validate configuration structure and required fields."""
-        required_sections = ['general', 'keywords', 'schedule', 'backfill']
+        required_sections = ['general', 'keywords', 'schedule']
         for section in required_sections:
             if section not in self._config:
                 raise ConfigurationError(f"Missing required section: [{section}]")
@@ -84,12 +84,7 @@ class FetcherConfig:
         if len(self._config['keywords']['terms']) == 0:
             raise ConfigurationError("keywords.terms cannot be empty")
 
-        # Validate province
-        province = self._config['general'].get('province', 'TH-50')
-        if province != 'TH-50':
-            raise ConfigurationError(
-                f"MVP constraint: Only TH-50 (Chiang Mai) supported. Got: {province}"
-            )
+        # Province is optional - defaults to 'TH' in property getter
 
         # Validate rate_limiting configuration (optional section, but validate if present)
         if 'rate_limiting' in self._config:
@@ -117,8 +112,8 @@ class FetcherConfig:
 
     @property
     def province(self) -> str:
-        """Get province code (ISO 3166-2)."""
-        return self._config['general'].get('province', 'TH-50')
+        """Get province/country code (ISO 3166-2)."""
+        return self._config['general'].get('province', 'TH')
 
     @property
     def timezone(self) -> str:
@@ -126,29 +121,14 @@ class FetcherConfig:
         return self._config['general'].get('timezone', 'Asia/Bangkok')
 
     @property
-    def daily_time(self) -> str:
-        """Get scheduled daily ingestion time (HH:MM format)."""
-        return self._config['schedule'].get('daily_time', '07:30')
+    def language(self) -> str:
+        """Get interface language for Google Trends API (default: en-US)."""
+        return self._config['general'].get('language', 'en-US')
 
     @property
-    def jitter_minutes(self) -> List[int]:
-        """Get jitter range in minutes [min, max]."""
-        return self._config['schedule'].get('jitter_minutes', [3, 5])
-
-    @property
-    def backfill_on_startup_gap_hours(self) -> int:
-        """Hours gap threshold to trigger recovery backfill on startup."""
-        return self._config['schedule'].get('backfill_on_startup_if_gap_hours', 24)
-
-    @property
-    def initial_backfill_days(self) -> int:
-        """Days to backfill on first run (empty database)."""
-        return self._config['backfill'].get('initial_days', 90)
-
-    @property
-    def recovery_backfill_days(self) -> int:
-        """Days to backfill after outage >24h."""
-        return self._config['backfill'].get('recovery_days', 14)
+    def jitter_seconds(self) -> List[int]:
+        """Get jitter range in seconds [min, max]."""
+        return self._config['schedule'].get('jitter_seconds', [3, 5])
 
     @property
     def stitching_min_overlap_days(self) -> int:

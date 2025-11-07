@@ -2,28 +2,25 @@
 """
 Fetcher CLI Entry Point
 
-Command-line interface for RSV data ingestion and daemon management.
+Simplified command-line interface for RSV data ingestion.
 
 Usage:
-    # Daily ingestion (fetch yesterday's data)
-    python main.py --daily
+    # Run ingestion (fetches past ~30 days using 'today 1-m')
+    python main.py
 
-    # Manual ingestion (specify date)
-    python main.py --manual --date 2025-11-01
+    # Custom database path
+    python main.py --db /path/to/custom.db
 
-    # Daemon mode (automated scheduler)
-    python main.py --daemon
+    # Debug logging
+    python main.py --log-level DEBUG
 
-    # Initial backfill (fetch last 90 days)
-    python main.py --backfill-initial
-
-Per spec.md:
-- FR-001: Manual and automated ingestion modes
-- FR-002: Daily scheduler at 07:30 ICT
-- FR-003: Graceful daemon management
+Per simplified requirements:
+- Fetches past 30 days of daily RSV data using pytrends 'today 1-m' format
+- Idempotent - safe to re-run
+- Upserts data into database
 
 Constitution alignment:
-- Principle VI: Clarity Over Cleverness - Simple CLI with clear flags
+- Principle VI: Clarity Over Cleverness - Simple, single-purpose CLI
 - Principle VIII: Observability - Structured logging throughout
 """
 
@@ -31,17 +28,14 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from datetime import date, timedelta, datetime
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lib.db import init_database, DatabaseConnection
-from lib.db_operations import DBOperations
+from lib.db import init_database
 from lib.logging_utils import setup_logging
 from lib.config import FetcherConfig
 from services.ingestion import IngestionService
-from services.scheduler import SchedulerService
 from lib.timezone_utils import now_ict
 
 logger = logging.getLogger(__name__)
@@ -55,70 +49,27 @@ def parse_args():
         Parsed arguments namespace
     """
     parser = argparse.ArgumentParser(
-        description="RSV Data Fetcher - Google Trends ingestion for Chiang Mai",
+        description="RSV Data Fetcher - Google Trends ingestion for Thailand",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Fetch yesterday's data
-  python main.py --daily
-
-  # Fetch specific date
-  python main.py --manual --date 2025-11-01
-
-  # Run scheduler daemon (07:30 ICT daily)
-  python main.py --daemon
-
-  # Initial backfill (last 90 days)
-  python main.py --backfill-initial
+  # Run ingestion (default)
+  python main.py
 
   # Custom database path
-  python main.py --daily --db /path/to/custom.db
+  python main.py --db /path/to/custom.db
 
   # Debug logging
-  python main.py --daily --log-level DEBUG
+  python main.py --log-level DEBUG
         """
-    )
-
-    # Execution mode (mutually exclusive)
-    mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument(
-        '--daily',
-        action='store_true',
-        help='Run daily ingestion (fetch yesterday\'s data)'
-    )
-    mode_group.add_argument(
-        '--manual',
-        action='store_true',
-        help='Run manual ingestion (requires --date)'
-    )
-    mode_group.add_argument(
-        '--daemon',
-        action='store_true',
-        help='Run scheduler daemon (07:30 ICT daily with ±2 min jitter)'
-    )
-    mode_group.add_argument(
-        '--backfill',
-        action='store_true',
-        help='Run backfill ingestion (use --days to specify range)'
     )
 
     # Optional arguments
     parser.add_argument(
-        '--date',
-        type=str,
-        help='Target date for manual ingestion (format: YYYY-MM-DD)'
-    )
-    parser.add_argument(
-        '--days',
-        type=int,
-        default=90,
-        help='Number of days for backfill (default: 90, for first-time setup; 14 for recovery)'
-    )
-    parser.add_argument(
         '--db',
         type=str,
-        default='data/rsv_trends.db',
-        help='Database file path (default: data/rsv_trends.db)'
+        default='../data/raw/rsv_trends.db',
+        help='Database file path (default: ../data/raw/rsv_trends.db)'
     )
     parser.add_argument(
         '--schema',
@@ -133,54 +84,22 @@ Examples:
         default='INFO',
         help='Logging level (default: INFO)'
     )
-    parser.add_argument(
-        '--schedule-time',
-        type=str,
-        default='07:30',
-        help='Daily schedule time in HH:MM format (default: 07:30, only for --daemon)'
-    )
 
     return parser.parse_args()
 
 
-def validate_args(args):
+def run_ingestion(db_path: str, schema_path: str):
     """
-    Validate argument combinations.
-
-    Args:
-        args: Parsed arguments namespace
-
-    Raises:
-        SystemExit: If validation fails
-    """
-    # Manual mode requires --date
-    if args.manual and not args.date:
-        logger.error("--manual mode requires --date argument")
-        sys.exit(1)
-
-    # Validate date format
-    if args.date:
-        try:
-            datetime.strptime(args.date, '%Y-%m-%d')
-        except ValueError:
-            logger.error(f"Invalid date format: {args.date}. Expected YYYY-MM-DD")
-            sys.exit(1)
-
-    # Validate --days argument
-    if args.backfill and args.days < 1:
-        logger.error(f"--days must be >= 1, got {args.days}")
-        sys.exit(1)
-
-
-def run_daily(db_path: str, schema_path: str):
-    """
-    Run daily ingestion (fetch yesterday's data).
+    Run RSV ingestion (fetch past ~30 days using 'today 1-m').
 
     Args:
         db_path: Database file path
         schema_path: Schema file path
+
+    Returns:
+        Exit code (0 for success/degraded, 1 for failure)
     """
-    logger.info("=== DAILY INGESTION MODE ===")
+    logger.info("=== RSV INGESTION (past 30 days) ===")
 
     db = None
     try:
@@ -192,177 +111,23 @@ def run_daily(db_path: str, schema_path: str):
 
         # Run ingestion
         ingestion_service = IngestionService(db, config)
-        batch_event = ingestion_service.ingest_daily(batch_type='daily')
+        batch_event = ingestion_service.ingest()
 
         # Log results
         logger.info(
-            f"Daily ingestion complete: batch_id={batch_event.batch_id}, "
+            f"Ingestion complete: batch_id={batch_event.batch_id}, "
             f"status={batch_event.status}, rows_written={batch_event.rows_written}, "
             f"rows_updated={batch_event.rows_updated}, duration={batch_event.duration_seconds():.1f}s"
         )
 
         if batch_event.status == 'success':
-            logger.info("✅ Daily ingestion successful")
+            logger.info("Ingestion successful")
             return 0
         elif batch_event.status == 'degraded':
-            logger.warning(f"⚠️  Daily ingestion degraded: {batch_event.notes}")
+            logger.warning(f"Ingestion degraded: {batch_event.notes}")
             return 0  # Still exit 0 for partial success
         else:
-            logger.error(f"❌ Daily ingestion failed: {batch_event.error_message}")
-            return 1
-    finally:
-        if db:
-            db.close()
-            logger.debug("Database connection closed")
-
-
-def run_manual(db_path: str, schema_path: str, target_date_str: str):
-    """
-    Run manual ingestion for specific date.
-
-    Args:
-        db_path: Database file path
-        schema_path: Schema file path
-        target_date_str: Target date string (YYYY-MM-DD)
-    """
-    logger.info(f"=== MANUAL INGESTION MODE (date={target_date_str}) ===")
-
-    db = None
-    try:
-        # Parse date
-        target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
-
-        # Initialize database
-        db = init_database(schema_path, db_path)
-
-        # Load configuration
-        config = FetcherConfig()
-
-        # Run ingestion
-        ingestion_service = IngestionService(db, config)
-        batch_event = ingestion_service.ingest_daily(target_date=target_date, batch_type='manual')
-
-        # Log results
-        logger.info(
-            f"Manual ingestion complete: batch_id={batch_event.batch_id}, "
-            f"status={batch_event.status}, rows_written={batch_event.rows_written}, "
-            f"duration={batch_event.duration_seconds():.1f}s"
-        )
-
-        if batch_event.status == 'success':
-            logger.info("✅ Manual ingestion successful")
-            return 0
-        elif batch_event.status == 'degraded':
-            logger.warning(f"⚠️  Manual ingestion degraded: {batch_event.notes}")
-            return 0
-        else:
-            logger.error(f"❌ Manual ingestion failed: {batch_event.error_message}")
-            return 1
-    finally:
-        if db:
-            db.close()
-            logger.debug("Database connection closed")
-
-
-def run_daemon(db_path: str, schema_path: str, schedule_time: str):
-    """
-    Run scheduler daemon (blocking).
-
-    Args:
-        db_path: Database file path
-        schema_path: Schema file path
-        schedule_time: Daily schedule time (HH:MM)
-    """
-    import signal
-
-    logger.info(f"=== DAEMON MODE (schedule={schedule_time} ICT) ===")
-
-    db = None
-    scheduler_service = None
-
-    def signal_handler(signum, frame):
-        """Handle SIGTERM and SIGINT for graceful shutdown."""
-        logger.info(f"Received signal {signum}, shutting down gracefully...")
-        if scheduler_service:
-            scheduler_service.stop()
-        if db:
-            db.close()
-            logger.debug("Database connection closed")
-        sys.exit(0)
-
-    # Register signal handlers
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    try:
-        # Initialize database
-        db = init_database(schema_path, db_path)
-
-        # Start scheduler
-        scheduler_service = SchedulerService(db, schedule_time=schedule_time)
-        scheduler_service.run()  # Blocking
-    finally:
-        if db:
-            db.close()
-            logger.debug("Database connection closed")
-
-
-def run_backfill(db_path: str, schema_path: str, days: int = 90):
-    """
-    Run backfill ingestion for specified number of days.
-
-    Args:
-        db_path: Database file path
-        schema_path: Schema file path
-        days: Number of days to backfill (default: 90 for initial, 14 for recovery)
-    """
-    logger.info(f"=== BACKFILL MODE (last {days} days) ===")
-
-    db = None
-    try:
-        # Initialize database
-        db = init_database(schema_path, db_path)
-
-        # Load configuration
-        config = FetcherConfig()
-
-        # Check database state
-        from lib.db_state import is_database_empty
-        is_empty = is_database_empty(db)
-
-        # Run backfill
-        ingestion_service = IngestionService(db, config)
-
-        if is_empty:
-            # Initial backfill: Use automatic detection method
-            logger.info(f"Empty database detected - triggering initial backfill ({days} days)")
-            batch_event = ingestion_service.ingest_with_initial_backfill_check(backfill_days=days)
-        else:
-            # Recovery backfill: Call date range method directly
-            logger.info(f"Running recovery backfill ({days} days)")
-            from services.backfill import calculate_backfill_window
-            start_date, end_date = calculate_backfill_window(days=days)
-            batch_event = ingestion_service.ingest_date_range(
-                start_date=start_date,
-                end_date=end_date,
-                batch_type='recovery_backfill'
-            )
-
-        # Log results
-        logger.info(
-            f"Backfill complete: batch_id={batch_event.batch_id}, "
-            f"status={batch_event.status}, rows_written={batch_event.rows_written}, "
-            f"duration={batch_event.duration_seconds():.1f}s"
-        )
-
-        if batch_event.status == 'success':
-            logger.info("✅ Backfill successful")
-            return 0
-        elif batch_event.status == 'degraded':
-            logger.warning(f"⚠️  Backfill degraded: {batch_event.notes}")
-            return 0
-        else:
-            logger.error(f"❌ Backfill failed: {batch_event.error_message}")
+            logger.error(f"Ingestion failed: {batch_event.error_message}")
             return 1
     finally:
         if db:
@@ -374,9 +139,8 @@ def main():
     """
     Main entry point.
     """
-    # Parse and validate arguments
+    # Parse arguments
     args = parse_args()
-    validate_args(args)
 
     # Setup logging
     log_level = getattr(logging, args.log_level)
@@ -384,16 +148,9 @@ def main():
 
     logger.info(f"RSV Fetcher started: {now_ict().strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
-    # Route to appropriate handler
+    # Run ingestion
     try:
-        if args.daily:
-            sys.exit(run_daily(args.db, args.schema))
-        elif args.manual:
-            sys.exit(run_manual(args.db, args.schema, args.date))
-        elif args.daemon:
-            run_daemon(args.db, args.schema, args.schedule_time)  # Never returns
-        elif args.backfill:
-            sys.exit(run_backfill(args.db, args.schema, args.days))
+        sys.exit(run_ingestion(args.db, args.schema))
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         sys.exit(0)

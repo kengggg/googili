@@ -37,7 +37,20 @@ ENV/
 *.db
 *.db-shm
 *.db-wal
-data/
+
+# Data directories (ignore contents but track structure via .gitkeep)
+/data/raw/*
+!/data/raw/.gitkeep
+!/data/raw/archive/
+/data/raw/archive/*
+!/data/raw/archive/.gitkeep
+/data/processed/*
+!/data/processed/.gitkeep
+/data/exports/*
+!/data/exports/.gitkeep
+
+# Legacy data directories (if they still exist)
+fetcher/data/
 archive/
 
 # Environment Variables

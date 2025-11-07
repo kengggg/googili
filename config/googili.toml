@@ -2,11 +2,12 @@
 # Copy to googili.toml and customize for your deployment
 
 [general]
-province = "TH-50"  # ISO 3166-2 code for Chiang Mai Province
+province = "TH"  # ISO 3166-2 code for Thailand
+language = "en-US"  # Interface language for Google Trends API
 timezone = "Asia/Bangkok"  # ICT timezone for all timestamps
 
 [keywords]
-# Thai ILI-related search terms for Chiang Mai
+# Thai ILI-related search terms for Thailand
 terms = [
   "ไข้",           # Fever
   "ไอ",            # Cough
@@ -21,15 +22,8 @@ terms = [
 ]
 
 [schedule]
-# Daily ingestion schedule
-daily_time = "07:30"  # HH:MM format in Asia/Bangkok timezone
-jitter_minutes = [3, 5]  # Random jitter range to avoid rate limiting
-backfill_on_startup_if_gap_hours = 24  # Trigger recovery backfill if last fetch >24h ago
-
-[backfill]
-# Backfill settings
-initial_days = 90  # Days to backfill on first run (empty database)
-recovery_days = 14  # Days to backfill after outage >24h
+# Rate limiting configuration
+jitter_seconds = [3, 5]  # Random jitter range in seconds to avoid rate limiting
 
 [stitching]
 # Overlap-based stitching configuration
@@ -42,7 +36,7 @@ min_run_for_weekly = 3  # Minimum consecutive missing days to trigger weekly pro
 
 [archive]
 # Monthly archive snapshots
-output_dir = "./data/archive"  # Directory for CSV exports
+output_dir = "./data/raw/archive"  # Directory for CSV exports
 cadence = "monthly"  # Archive frequency
 
 [health]

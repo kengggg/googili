@@ -24,12 +24,12 @@ class TestTrendsFetcherInitialization:
     """Test TrendsFetcher initialization and configuration."""
 
     def test_init_with_defaults(self):
-        """Test initialization with default province TH-50."""
+        """Test initialization with default province TH."""
         fetcher = TrendsFetcher()
 
-        assert fetcher.province == 'TH-50'
+        assert fetcher.province == 'TH'
         assert fetcher.jitter_range == (3, 5)
-        assert fetcher.hl == 'th'
+        assert fetcher.hl == 'en-US'
         assert fetcher.tz == 420  # UTC+7
 
     def test_init_with_custom_jitter(self):
@@ -38,10 +38,10 @@ class TestTrendsFetcherInitialization:
 
         assert fetcher.jitter_range == (1, 2)
 
-    def test_init_validates_province_constraint(self):
-        """Test that non-TH-50 province raises error in MVP."""
-        with pytest.raises(ValueError, match="MVP constraint.*TH-50"):
-            TrendsFetcher(province='TH-10')
+    def test_init_accepts_any_province(self):
+        """Test that any ISO 3166-2 province code is accepted."""
+        fetcher = TrendsFetcher(province='TH-10')
+        assert fetcher.province == 'TH-10'
 
 
 class TestDailyRSVFetch:
@@ -60,7 +60,7 @@ class TestDailyRSVFetch:
         }, index=pd.date_range('2025-11-01', periods=5, freq='D'))
         mock_pytrends.interest_over_time.return_value = mock_data
 
-        fetcher = TrendsFetcher(province='TH-50')
+        fetcher = TrendsFetcher(province='TH')
         result = fetcher.fetch_daily_rsv(
             keywords=['ไข้'],
             start_date=date(2025, 11, 1),
@@ -301,7 +301,7 @@ class TestProvinceScoping:
         }, index=pd.date_range('2025-11-01', periods=1, freq='D'))
         mock_pytrends.interest_over_time.return_value = mock_data
 
-        fetcher = TrendsFetcher(province='TH-50')
+        fetcher = TrendsFetcher(province='TH')
         result = fetcher.fetch_daily_rsv(
             keywords=['ไข้'],
             start_date=date(2025, 11, 1),

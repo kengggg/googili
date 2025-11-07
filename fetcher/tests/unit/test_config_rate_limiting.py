@@ -39,7 +39,7 @@ class TestRateLimitingConfigDefaults:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -47,7 +47,7 @@ terms = ["ไข้", "ไอ"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -108,7 +108,7 @@ class TestRateLimitingConfigTOMLParsing:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -116,7 +116,7 @@ terms = ["ไข้", "ไอ", "เจ็บคอ"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -171,7 +171,7 @@ respect_retry_after = false
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -179,7 +179,7 @@ terms = ["ไข้"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -236,7 +236,7 @@ class TestRateLimitingConfigValidation:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -244,7 +244,7 @@ terms = ["ไข้"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -288,7 +288,7 @@ max_retries = -1
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -296,7 +296,7 @@ terms = ["ไข้"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -340,7 +340,7 @@ backoff_base_seconds = 0
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -348,7 +348,7 @@ terms = ["ไข้"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
@@ -395,7 +395,7 @@ class TestRateLimitingConfigAccessors:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
             f.write("""
 [general]
-province = "TH-50"
+province = "TH"
 timezone = "Asia/Bangkok"
 
 [keywords]
@@ -403,7 +403,7 @@ terms = ["ไข้", "ไอ"]
 
 [schedule]
 daily_time = "07:30"
-jitter_minutes = [3, 5]
+jitter_seconds = [3, 5]
 backfill_on_startup_if_gap_hours = 24
 
 [backfill]
